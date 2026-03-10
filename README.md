@@ -32,16 +32,66 @@ Follow along on [Substack](#) for progress updates and technical write-ups.
 
 ---
 
-## Planned Stack
+## Tech Stack
 
-- **Language** — Kotlin (primary), TypeScript (web UI)
-- **Agent framework** — [Koog](https://github.com/JetBrains/koog) (JetBrains OSS, Apache 2.0)
-- **API layer** — Ktor
-- **Knowledge graph** — Neo4j
-- **Vector store** — Qdrant
-- **Code parsing** — Tree-sitter (JVM bindings)
-- **Embeddings / RAG** — LangChain4j
-- **Build tool** — Gradle
+| Component | Technology |
+|---|---|
+| Language | Kotlin (primary) |
+| Backend | Ktor |
+| AI Agents | [Koog](https://github.com/JetBrains/koog) (JetBrains OSS, Apache 2.0) |
+| Knowledge Graph | Neo4j |
+| Vector Store | Qdrant |
+| Code Parsing | Tree-sitter (JVM bindings) |
+| Embeddings | Gemini (`gemini-embedding-001`) |
+| Web UI | Kotlin Multiplatform (Compose for Web / Kotlin/Wasm) |
+| Build | Gradle (Kotlin DSL) |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                   Ntivo API (Ktor)               │
+├────────┬────────┬───────────┬───────────────────┤
+│ Ingest │ Search │ Graph     │ Agent (Koog)      │
+│        │        │ Traversal │                   │
+├────────┴────────┴───────────┴───────────────────┤
+│   Neo4j (relationships)  │  Qdrant (embeddings) │
+└──────────────────────────┴──────────────────────┘
+
+Sources:  Git repos → Tree-sitter parsing → embeddings + graph nodes
+          Jira → ticket nodes + code↔ticket edges
+          Confluence → spec nodes + ticket↔spec edges
+          Datadog → alert nodes + alert↔code edges
+
+Clients:  Web UI (KMP/Compose for Web), MCP Server, REST API
+```
+
+---
+
+## Running Locally
+
+### Prerequisites
+
+- JDK 21+
+- Docker Desktop (for Neo4j and Qdrant)
+
+### Quick Start
+
+```bash
+# Start the backend
+./gradlew run
+```
+
+The server starts at `http://localhost:8080`.
+
+### With Docker (Neo4j + Qdrant)
+
+```bash
+# Coming soon — docker-compose.yml will spin up Neo4j + Qdrant + Ntivo API
+docker compose up
+```
 
 ---
 
@@ -53,6 +103,7 @@ Follow along on [Substack](#) for progress updates and technical write-ups.
 - [ ] Natural language query agent
 - [ ] Datadog integration — automated incident enrichment
 - [ ] MCP server — expose Ntivo as a tool for Cursor, Claude, and other AI clients
+- [ ] Web UI — KMP/Compose for Web dashboard
 - [ ] Docker Compose setup for self-hosting
 
 ---
@@ -76,3 +127,7 @@ follow along on Substack to know when it's ready for outside input.
 ## License
 
 Apache 2.0
+
+## Name
+
+*Ntivo* comes from the Xitsonga root word for "knowledge" (*ntivo*), as in *vutivi*. Parallel to *zivo* / *ruzivo* in Shona — both Bantu languages sharing the same linguistic heritage.
