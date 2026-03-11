@@ -8,15 +8,15 @@ import kotlinx.coroutines.runBlocking
 /**
  * A simple Koog agent that proves the AI plumbing works.
  *
- * Run this with: ./gradlew run -PmainClass=io.ntivo.SimpleAgentKt
+ * Run this with: ./gradlew runAgent
  * Or run the main() directly from IntelliJ.
  *
- * Requires: GEMINI_API_KEY environment variable set.
+ * Requires: NTIVO_GEMINI_API_KEY environment variable set.
  * Get a free key at https://aistudio.google.com
  */
 fun main() = runBlocking {
-    val apiKey = System.getenv("GEMINI_API_KEY")
-        ?: error("Set the GEMINI_API_KEY environment variable. Get a free key at https://aistudio.google.com")
+    val apiKey = System.getenv("NTIVO_GEMINI_API_KEY")
+        ?: error("Set the NTIVO_GEMINI_API_KEY environment variable. Get a free key at https://aistudio.google.com")
 
     val agent = AIAgent(
         promptExecutor = simpleGoogleAIExecutor(apiKey),

@@ -33,3 +33,12 @@ dependencies {
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
+
+// Separate task to run the standalone Koog agent (without starting the Ktor server)
+tasks.register<JavaExec>("runAgent") {
+    description = "Run the standalone Koog agent REPL"
+    group = "application"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "io.ntivo.SimpleAgentKt"
+    standardInput = System.`in`
+}

@@ -59,7 +59,7 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Kotlin code style: JetBrains official (`kotlin.code.style=official` in gradle.properties)
 - Data classes use `@Serializable` for JSON responses
 - Ktor routes defined as `Application.configureX()` extension functions
-- Environment variables for secrets: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_PASSWORD`, `QDRANT_URL`
+- Environment variables for secrets: `NTIVO_GEMINI_API_KEY`, `NTIVO_ANTHROPIC_API_KEY`, `NTIVO_NEO4J_URI`, `NTIVO_NEO4J_PASSWORD`, `NTIVO_QDRANT_URL`
 - Secrets loaded from environment, never hardcoded, never committed
 - Graph node IDs: `{type}:{orgId}:{sourceId}` e.g. `CODE:acme:BiometricViewModel#authenticate`
 
@@ -71,8 +71,8 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 ./gradlew compileKotlin            # Compile check only
 curl http://localhost:8080/health   # Verify server is running
 
-# Run the standalone agent (separate main):
-GEMINI_API_KEY="..." ./gradlew run -PmainClass=io.ntivo.SimpleAgentKt
+# Run the standalone agent (separate Gradle task):
+NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
 
 # Docker (not set up yet — coming soon):
 docker compose up                  # Start Neo4j + Qdrant
