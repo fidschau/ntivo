@@ -42,7 +42,7 @@ Follow along on [Substack](#) for progress updates and technical write-ups.
 | Knowledge Graph | Neo4j |
 | Vector Store | Qdrant |
 | Code Parsing | Tree-sitter (JVM bindings) |
-| Embeddings | Gemini (`gemini-embedding-001`) |
+| Embeddings | Gemini (`gemini-embedding-001`, upgrade path to multimodal `gemini-embedding-2-preview`) |
 | Web UI | Kotlin Multiplatform (Compose for Web / Kotlin/Wasm) |
 | Build | Gradle (Kotlin DSL) |
 
