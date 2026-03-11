@@ -24,6 +24,8 @@ ntivo/
 ├── docker-compose.yml       ← Neo4j + Qdrant for local dev
 ├── src/main/kotlin/
 │   ├── Application.kt      ← Ktor server entry point, ContentNegotiation setup
+│   ├── EmbeddingDemo.kt     ← Gemini embedding + Qdrant storage demo
+│   ├── GeminiEmbedder.kt    ← Custom Embedder with taskType support (implements Koog Embedder)
 │   ├── Routing.kt           ← HTTP routes (GET /health returns {"status":"ok"})
 │   └── SimpleAgent.kt       ← Standalone Koog agent with Gemini (interactive REPL)
 ├── src/main/resources/
@@ -54,6 +56,8 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Tool registration: `ToolRegistry { tool(::functionName) }` with `@Tool` and `@LLMDescription` annotations
 - Koog includes: agents-core, agents-tools, rag-base, embeddings modules — use these before reaching for external libraries
 - Imports: `ai.koog.agents.core.agent.AIAgent`, `ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor`, `ai.koog.prompt.executor.clients.google.GoogleModels`
+- Koog's built-in `GoogleLLMClient` does NOT pass `taskType` to the Gemini embedding API. Use our custom `GeminiEmbedder` instead — it implements Koog's `Embedder` interface and adds `taskType` support.
+- Qdrant Java client (`io.qdrant:client`) uses gRPC on port 6334. Use `kotlinx-coroutines-guava` for `.await()` on `ListenableFuture` returns.
 
 ## Conventions
 
@@ -76,6 +80,9 @@ curl http://localhost:8080/health   # Verify server is running
 # Run the standalone agent (separate Gradle task):
 NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
 
+# Run the embedding demo (requires Qdrant running):
+NTIVO_GEMINI_API_KEY="..." ./gradlew runEmbeddingDemo
+
 # Docker services (Neo4j + Qdrant):
 docker compose up -d               # Start Neo4j + Qdrant (background)
 docker compose down                # Stop services (data preserved)
@@ -90,7 +97,7 @@ docker compose ps                  # Check service status
 1. ~~Ktor project with GET /health~~ ✅
 2. ~~Koog agent talking to Gemini~~ ✅
 3. ~~Neo4j + Qdrant running locally via Docker Compose~~ ✅
-4. First embedding with `gemini-embedding-001`
+4. ~~First embedding with `gemini-embedding-001`~~ ✅
 5. First Tree-sitter parse of a Kotlin file
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.

@@ -30,6 +30,15 @@ dependencies {
     // Koog AI agent framework
     implementation("ai.koog:koog-agents:0.6.4")
 
+    // Ktor HTTP client (for Gemini embedding REST API)
+    implementation("io.ktor:ktor-client-core")
+    implementation("io.ktor:ktor-client-cio")
+    implementation("io.ktor:ktor-client-content-negotiation")
+
+    // Qdrant vector database client (gRPC-based)
+    implementation("io.qdrant:client:1.17.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.1")
+
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
@@ -41,4 +50,12 @@ tasks.register<JavaExec>("runAgent") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "io.ntivo.SimpleAgentKt"
     standardInput = System.`in`
+}
+
+// Run the embedding demo (embeds code, stores in Qdrant, queries it back)
+tasks.register<JavaExec>("runEmbeddingDemo") {
+    description = "Run the Gemini embedding + Qdrant demo"
+    group = "application"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "io.ntivo.EmbeddingDemoKt"
 }
