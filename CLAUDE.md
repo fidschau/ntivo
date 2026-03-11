@@ -23,13 +23,17 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 ntivo/
 ├── docker-compose.yml       ← Neo4j + Qdrant for local dev
 ├── src/main/kotlin/
-│   ├── Application.kt      ← Ktor server entry point, ContentNegotiation setup
+│   ├── ApiRouting.kt        ← REST API endpoints: /api/chat, /api/embed, /api/search, /api/parse
+│   ├── Application.kt       ← Ktor server entry point, ContentNegotiation setup
 │   ├── EmbeddingDemo.kt     ← Gemini embedding + Qdrant storage demo
 │   ├── GeminiEmbedder.kt    ← Custom Embedder with taskType support (implements Koog Embedder)
-│   ├── Routing.kt           ← HTTP routes (GET /health returns {"status":"ok"})
+│   ├── Routing.kt           ← HTTP routes (GET /health)
 │   ├── SimpleAgent.kt       ← Standalone Koog agent with Gemini (interactive REPL)
+│   ├── StaticContent.kt     ← Serves static web dev console from resources/static/
 │   └── TreeSitterDemo.kt    ← Tree-sitter Kotlin parser demo (extracts functions/classes)
 ├── src/main/resources/
+│   ├── static/
+│   │   └── index.html       ← Web dev console (single-file HTML/CSS/JS, dark theme)
 │   ├── application.yaml     ← Ktor config (port 8080, module reference)
 │   └── logback.xml
 ├── build.gradle.kts
@@ -73,7 +77,10 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 
 - Kotlin code style: JetBrains official (`kotlin.code.style=official` in gradle.properties)
 - Data classes use `@Serializable` for JSON responses
-- Ktor routes defined as `Application.configureX()` extension functions
+- Ktor routes defined as `Application.configureX()` extension functions (`configureRouting()`, `configureApiRouting()`, `configureStaticContent()`)
+- Static content served last in Application.module() so explicit routes take priority
+- Web dev console: single-file HTML/CSS/JS in `src/main/resources/static/index.html` — will migrate to KMP/Compose for Web when the project outgrows this
+- API endpoints under `/api/` prefix with `@Serializable` request/response data classes in ApiRouting.kt
 - Environment variables for secrets: `NTIVO_GEMINI_API_KEY`, `NTIVO_ANTHROPIC_API_KEY`, `NTIVO_NEO4J_URI`, `NTIVO_NEO4J_PASSWORD`, `NTIVO_QDRANT_URL`
 - Secrets loaded from environment, never hardcoded, never committed
 - Graph node IDs: `{type}:{orgId}:{sourceId}` e.g. `CODE:acme:BiometricViewModel#authenticate`
@@ -83,9 +90,10 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 
 ```bash
 ./gradlew build                    # Build everything
-./gradlew run                      # Start Ktor server on :8080
+./gradlew run                      # Start Ktor server on :8080 (dev console at http://localhost:8080)
 ./gradlew compileKotlin            # Compile check only
 curl http://localhost:8080/health   # Verify server is running
+# Open http://localhost:8080 in a browser for the web dev console
 
 # Run the standalone agent (separate Gradle task):
 NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
@@ -105,13 +113,15 @@ docker compose ps                  # Check service status
 
 ## Current phase
 
-**Phase 1 — Getting comfortable with the stack.** No production deployment. Focus is:
+**Phase 1 — Getting comfortable with the stack.** ✅ COMPLETE. All 5 steps done:
 
 1. ~~Ktor project with GET /health~~ ✅
 2. ~~Koog agent talking to Gemini~~ ✅
 3. ~~Neo4j + Qdrant running locally via Docker Compose~~ ✅
 4. ~~First embedding with `gemini-embedding-001`~~ ✅
 5. ~~First Tree-sitter parse of a Kotlin file~~ ✅
+
+**Bonus: Web Dev Console** — static HTML dev console at `http://localhost:8080` with tabs for Health, Agent Chat, Embedding, Vector Search, and Tree-sitter Parse. API endpoints under `/api/` for all Phase 1 demos.
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 

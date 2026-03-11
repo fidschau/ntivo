@@ -25,8 +25,7 @@ Ask questions like:
 
 ## Status
 
-🚧 **Early development.** The repo is currently being set up. Core architecture and
-stack decisions are in place — active building starts now.
+🟢 **Phase 1 complete.** All foundational pieces are in place: Ktor server, Koog AI agent with Gemini, Gemini embeddings with Qdrant vector storage, Tree-sitter code parsing, and a web dev console for visual testing.
 
 Follow along on [Substack](#) for progress updates and technical write-ups.
 
@@ -76,27 +75,64 @@ Clients:  Web UI (KMP/Compose for Web), MCP Server, REST API
 
 - JDK 21+
 - Docker Desktop (for Neo4j and Qdrant)
+- Gemini API key (free at [aistudio.google.com](https://aistudio.google.com)) for AI features
 
 ### Quick Start
 
 ```bash
-# Start the backend
+# 1. Start infrastructure (Neo4j + Qdrant)
+docker compose up -d
+
+# 2. Start the Ktor server
 ./gradlew run
+
+# 3. Open the web dev console
+open http://localhost:8080
 ```
 
-The server starts at `http://localhost:8080`.
+The server starts at `http://localhost:8080` with a built-in web dev console for testing all features visually.
 
-### With Docker (Neo4j + Qdrant)
+### API Endpoints
+
+| Endpoint | Description | Requires |
+|---|---|---|
+| `GET /health` | Health check | Nothing |
+| `POST /api/chat` | Send a prompt to the Koog agent | `NTIVO_GEMINI_API_KEY` |
+| `POST /api/embed` | Embed text with task type | `NTIVO_GEMINI_API_KEY` |
+| `POST /api/search` | Vector search over Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
+| `POST /api/parse` | Parse Kotlin code with Tree-sitter | Nothing |
+
+### Standalone Demos
 
 ```bash
-# Coming soon — docker-compose.yml will spin up Neo4j + Qdrant + Ntivo API
-docker compose up
+# Interactive AI agent REPL
+NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
+
+# Embedding + Qdrant storage demo (requires Docker)
+NTIVO_GEMINI_API_KEY="..." ./gradlew runEmbeddingDemo
+
+# Tree-sitter parsing demo (no API key needed)
+./gradlew runTreeSitterDemo
 ```
+
+### Docker Services
+
+```bash
+docker compose up -d        # Start Neo4j + Qdrant (background)
+docker compose down          # Stop services (data preserved)
+docker compose down -v       # Stop + wipe all data (fresh start)
+docker compose ps            # Check service status
+```
+
+- **Neo4j Browser:** http://localhost:7474 (user: `neo4j`, password: `ntivo_dev_password`)
+- **Qdrant Dashboard:** http://localhost:6333/dashboard
 
 ---
 
 ## Roadmap (high level)
 
+- [x] Stack foundation — Ktor, Koog agents, Gemini, Qdrant, Tree-sitter, Docker Compose
+- [x] Web dev console — visual testing for all features
 - [ ] Core ingestion — parse and embed a codebase, store in knowledge graph
 - [ ] Jira integration — link code to tickets and epics
 - [ ] Confluence integration — connect specs and decisions to code
@@ -104,7 +140,6 @@ docker compose up
 - [ ] Datadog integration — automated incident enrichment
 - [ ] MCP server — expose Ntivo as a tool for Cursor, Claude, and other AI clients
 - [ ] Web UI — KMP/Compose for Web dashboard
-- [ ] Docker Compose setup for self-hosting
 
 ---
 

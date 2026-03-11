@@ -13,4 +13,6 @@ fun Application.module() {
         json()
     }
     configureRouting()
+    configureApiRouting()
+    configureStaticContent()
 }

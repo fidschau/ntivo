@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ntivo Dev Console</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e8;
+            min-height: 100vh;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0; border-bottom: 1px solid #2a2a3d;
+            margin-bottom: 20px;
+        }
+        header h1 { font-size: 20px; font-weight: 600; color: #fff; }
+        header h1 span { color: #7c7cff; }
+        .status-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #555; display: inline-block; margin-right: 8px;
+        }
+        .status-dot.ok { background: #4ade80; }
+        .status-dot.err { background: #f87171; }
+        .status-bar { font-size: 13px; color: #888; display: flex; align-items: center; }
+
+        /* Tabs */
+        .tabs {
+            display: flex; gap: 4px; margin-bottom: 20px;
+            border-bottom: 1px solid #2a2a3d; padding-bottom: 0;
+        }
+        .tab-btn {
+            background: none; border: none; color: #888; font-size: 14px;
+            padding: 10px 18px; cursor: pointer; border-bottom: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .tab-btn:hover { color: #c0c0d0; }
+        .tab-btn.active { color: #7c7cff; border-bottom-color: #7c7cff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Forms */
+        label { display: block; font-size: 13px; color: #999; margin-bottom: 6px; }
+        textarea, input[type="text"], input[type="number"], select {
+            width: 100%; padding: 10px 12px; border-radius: 6px;
+            border: 1px solid #2a2a3d; background: #1a1a2e; color: #e0e0e8;
+            font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+            font-size: 13px; margin-bottom: 12px; resize: vertical;
+        }
+        textarea:focus, input:focus, select:focus {
+            outline: none; border-color: #7c7cff;
+        }
+        select { cursor: pointer; }
+        .row { display: flex; gap: 12px; }
+        .row > * { flex: 1; }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 24px; border-radius: 6px; border: none;
+            background: #7c7cff; color: #fff; font-size: 14px; font-weight: 500;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .btn:hover { background: #6a6af0; }
+        .btn:disabled { background: #3a3a5a; color: #666; cursor: not-allowed; }
+        .btn-row { margin-bottom: 16px; }
+
+        /* Results */
+        .result {
+            background: #1a1a2e; border: 1px solid #2a2a3d; border-radius: 6px;
+            padding: 16px; min-height: 60px;
+            font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 13px;
+            white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+        }
+        .result.empty { color: #555; font-style: italic; }
+
+        /* Search result cards */
+        .search-card {
+            background: #12122a; border: 1px solid #2a2a3d; border-radius: 6px;
+            padding: 12px 16px; margin-bottom: 8px;
+        }
+
+        /* Function table */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; color: #888; font-weight: 500; padding: 8px 12px;
+             border-bottom: 1px solid #2a2a3d; }
+        td { padding: 8px 12px; border-bottom: 1px solid #1a1a2e; }
+
+        .loading::after {
+            content: ""; display: inline-block; width: 14px; height: 14px;
+            border: 2px solid #555; border-top-color: #7c7cff;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+            margin-left: 8px; vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span>ntivo</span> dev console</h1>
+            <div class="status-bar">
+                <span id="statusDot" class="status-dot"></span>
+                <span id="statusText">Checking...</span>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="health">Health</button>
+            <button class="tab-btn" data-tab="chat">Agent Chat</button>
+            <button class="tab-btn" data-tab="embed">Embedding</button>
+            <button class="tab-btn" data-tab="search">Vector Search</button>
+            <button class="tab-btn" data-tab="parse">Tree-sitter</button>
+        </div>
+
+        <!-- Health Tab -->
+        <div id="tab-health" class="tab-content active">
+            <div class="btn-row">
+                <button class="btn" id="healthBtn" data-action="health">Check Health</button>
+            </div>
+            <div id="healthResult" class="result empty">Click "Check Health" to test the server.</div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div id="tab-chat" class="tab-content">
+            <label for="chatPrompt">Prompt</label>
+            <textarea id="chatPrompt" rows="3" placeholder="Ask the Koog agent anything..."></textarea>
+            <div class="btn-row">
+                <button class="btn" id="chatBtn" data-action="chat">Send</button>
+            </div>
+            <label>Response</label>
+            <div id="chatResult" class="result empty">Agent response will appear here.</div>
+        </div>
+
+        <!-- Embed Tab -->
+        <div id="tab-embed" class="tab-content">
+            <label for="embedText">Text or code to embed</label>
+            <textarea id="embedText" rows="5" placeholder="Paste code or text to embed..."></textarea>
+            <label for="embedTaskType">Task Type</label>
+            <select id="embedTaskType">
+                <option value="RETRIEVAL_DOCUMENT">RETRIEVAL_DOCUMENT (indexing code/docs)</option>
+                <option value="RETRIEVAL_QUERY">RETRIEVAL_QUERY (search queries)</option>
+                <option value="CODE_RETRIEVAL_QUERY">CODE_RETRIEVAL_QUERY (code search)</option>
+                <option value="SEMANTIC_SIMILARITY">SEMANTIC_SIMILARITY (drift detection)</option>
+                <option value="CLASSIFICATION">CLASSIFICATION</option>
+                <option value="CLUSTERING">CLUSTERING</option>
+            </select>
+            <div class="btn-row">
+                <button class="btn" id="embedBtn" data-action="embed">Embed</button>
+            </div>
+            <label>Result</label>
+            <div id="embedResult" class="result empty">Embedding vector preview will appear here.</div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="tab-search" class="tab-content">
+            <label for="searchQuery">Natural language query</label>
+            <input type="text" id="searchQuery" placeholder="e.g. health check endpoint" />
+            <div class="row">
+                <div>
+                    <label for="searchCollection">Collection</label>
+                    <input type="text" id="searchCollection" value="chunks_demo" />
+                </div>
+                <div>
+                    <label for="searchLimit">Max results</label>
+                    <input type="number" id="searchLimit" value="5" min="1" max="20" />
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn" id="searchBtn" data-action="search">Search</button>
+            </div>
+            <label>Results</label>
+            <div id="searchResult" class="result empty">Search results will appear here.</div>
+        </div>
+
+        <!-- Parse Tab -->
+        <div id="tab-parse" class="tab-content">
+            <label for="parseCode">Kotlin source code</label>
+            <textarea id="parseCode" rows="14">package io.ntivo.example
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class CodeChunk(
+    val id: String,
+    val content: String,
+    val fingerprint: String
+)
+
+fun CodeChunk.isStale(newFingerprint: String): Boolean {
+    return fingerprint != newFingerprint
+}
+
+suspend fun indexRepository(orgId: String, repoUrl: String): Int {
+    val chunks = parseAllFiles(repoUrl)
+    val fresh = chunks.filter { !it.isStale(computeHash(it.content)) }
+    return embedAndStore(orgId, fresh)
+}
+
+private fun computeHash(content: String): String {
+    return java.security.MessageDigest.getInstance("SHA-256")
+        .digest(content.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+}</textarea>
+            <div class="btn-row">
+                <button class="btn" id="parseBtn" data-action="parse">Parse</button>
+            </div>
+            <label>Extracted structure</label>
+            <div id="parseResult" class="result empty">Parsed functions and classes will appear here.</div>
+        </div>
+    </div>
+
+    <script>
+        // --- Tab navigation (event delegation) ---
+        document.querySelector('.tabs').addEventListener('click', function(e) {
+            if (!e.target.classList.contains('tab-btn')) return;
+            var tabName = e.target.getAttribute('data-tab');
+            document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+            document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+            document.getElementById('tab-' + tabName).classList.add('active');
+            e.target.classList.add('active');
+        });
+
+        // --- Helpers ---
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(text));
+            return div.textContent;
+        }
+
+        function showResult(id, text, type) {
+            var el = document.getElementById(id);
+            el.classList.remove('empty');
+            el.textContent = '';
+            if (type === 'error') { el.style.color = '#f87171'; }
+            else { el.style.color = ''; }
+            el.textContent = text;
+        }
+
+        function showResultDom(id, domNode) {
+            var el = document.getElementById(id);
+            el.classList.remove('empty');
+            el.style.color = '';
+            el.textContent = '';
+            el.appendChild(domNode);
+        }
+
+        function setLoading(btnId, resultId) {
+            document.getElementById(btnId).disabled = true;
+            var el = document.getElementById(resultId);
+            el.classList.remove('empty');
+            el.classList.add('loading');
+            el.textContent = 'Working';
+        }
+        function clearLoading(btnId, resultId) {
+            document.getElementById(btnId).disabled = false;
+            document.getElementById(resultId).classList.remove('loading');
+        }
+
+        async function apiCall(path, body) {
+            var res = await fetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            var data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+            return data;
+        }
+
+        // --- Health ---
+        async function checkHealth() {
+            try {
+                var res = await fetch('/health');
+                var data = await res.json();
+                document.getElementById('statusDot').className = 'status-dot ok';
+                document.getElementById('statusText').textContent = 'Server healthy';
+                showResult('healthResult', 'Status: ' + data.status + '\n\nResponse:\n' + JSON.stringify(data, null, 2));
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot err';
+                document.getElementById('statusText').textContent = 'Server unreachable';
+                showResult('healthResult', 'Cannot reach server at localhost:8080.\nMake sure the server is running: ./gradlew run', 'error');
+            }
+        }
+
+        // --- Chat ---
+        async function sendChat() {
+            var prompt = document.getElementById('chatPrompt').value.trim();
+            if (!prompt) return showResult('chatResult', "'prompt' cannot be empty.", 'error');
+            setLoading('chatBtn', 'chatResult');
+            try {
+                var data = await apiCall('/api/chat', { prompt: prompt });
+                showResult('chatResult', data.response);
+            } catch (e) {
+                showResult('chatResult', e.message, 'error');
+            } finally { clearLoading('chatBtn', 'chatResult'); }
+        }
+
+        // --- Embed ---
+        async function embedText() {
+            var text = document.getElementById('embedText').value.trim();
+            if (!text) return showResult('embedResult', "'text' cannot be empty.", 'error');
+            var taskType = document.getElementById('embedTaskType').value;
+            setLoading('embedBtn', 'embedResult');
+            try {
+                var data = await apiCall('/api/embed', { text: text, taskType: taskType });
+                var preview = data.preview.map(function(v) { return v.toFixed(6); }).join('\n');
+                var output = 'Dimension: ' + data.dimension + '  |  Task type: ' + data.taskType +
+                    '\n\nFirst 10 values:\n' + preview + '\n\n... (' + data.dimension + ' total)';
+                showResult('embedResult', output);
+            } catch (e) {
+                showResult('embedResult', e.message, 'error');
+            } finally { clearLoading('embedBtn', 'embedResult'); }
+        }
+
+        // --- Search ---
+        async function searchVectors() {
+            var query = document.getElementById('searchQuery').value.trim();
+            if (!query) return showResult('searchResult', "'query' cannot be empty.", 'error');
+            var collection = document.getElementById('searchCollection').value.trim() || 'chunks_demo';
+            var limit = parseInt(document.getElementById('searchLimit').value) || 5;
+            setLoading('searchBtn', 'searchResult');
+            try {
+                var data = await apiCall('/api/search', { query: query, collection: collection, limit: limit });
+                if (data.results.length === 0) {
+                    showResult('searchResult', 'No results found.');
+                    return;
+                }
+                var container = document.createDocumentFragment();
+                data.results.forEach(function(r, i) {
+                    var card = document.createElement('div');
+                    card.className = 'search-card';
+                    var scoreDiv = document.createElement('div');
+                    scoreDiv.style.cssText = 'font-size:14px;font-weight:600;color:#7c7cff;margin-bottom:6px';
+                    scoreDiv.textContent = '#' + (i+1) + '  Score: ' + r.score.toFixed(4);
+                    card.appendChild(scoreDiv);
+                    var payloadDiv = document.createElement('div');
+                    payloadDiv.style.cssText = 'font-size:12px;color:#aaa';
+                    Object.keys(r.payload).forEach(function(k) {
+                        var line = document.createElement('div');
+                        line.textContent = '  ' + k + ': ' + r.payload[k];
+                        payloadDiv.appendChild(line);
+                    });
+                    card.appendChild(payloadDiv);
+                    container.appendChild(card);
+                });
+                showResultDom('searchResult', container);
+            } catch (e) {
+                showResult('searchResult', e.message, 'error');
+            } finally { clearLoading('searchBtn', 'searchResult'); }
+        }
+
+        // --- Parse ---
+        async function parseCode() {
+            var code = document.getElementById('parseCode').value;
+            if (!code.trim()) return showResult('parseResult', "'code' cannot be empty.", 'error');
+            setLoading('parseBtn', 'parseResult');
+            try {
+                var data = await apiCall('/api/parse', { code: code });
+                var container = document.createDocumentFragment();
+
+                if (data.classes.length > 0) {
+                    var classLine = document.createElement('div');
+                    classLine.style.cssText = 'color:#4ade80;margin-bottom:12px';
+                    classLine.textContent = 'Classes (' + data.classes.length + '): ' + data.classes.join(', ');
+                    container.appendChild(classLine);
+                }
+
+                if (data.functions.length > 0) {
+                    var funcLabel = document.createElement('div');
+                    funcLabel.style.cssText = 'color:#4ade80;margin-bottom:8px';
+                    funcLabel.textContent = 'Functions (' + data.functions.length + '):';
+                    container.appendChild(funcLabel);
+
+                    var table = document.createElement('table');
+                    var thead = document.createElement('thead');
+                    var headerRow = document.createElement('tr');
+                    ['Name', 'Receiver', 'Parameters', 'Lines', 'Size'].forEach(function(h) {
+                        var th = document.createElement('th');
+                        th.textContent = h;
+                        headerRow.appendChild(th);
+                    });
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+
+                    var tbody = document.createElement('tbody');
+                    data.functions.forEach(function(fn) {
+                        var row = document.createElement('tr');
+                        [fn.name, fn.receiver || '\u2014', fn.parameters, fn.startLine + '\u2013' + fn.endLine, fn.bodyLength + ' chars'].forEach(function(val) {
+                            var td = document.createElement('td');
+                            td.textContent = val;
+                            row.appendChild(td);
+                        });
+                        tbody.appendChild(row);
+                    });
+                    table.appendChild(tbody);
+                    container.appendChild(table);
+                }
+
+                if (data.functions.length === 0 && data.classes.length === 0) {
+                    var empty = document.createElement('div');
+                    empty.style.color = '#666';
+                    empty.textContent = 'No functions or classes found.';
+                    container.appendChild(empty);
+                }
+
+                var footer = document.createElement('div');
+                footer.style.cssText = 'color:#666;margin-top:12px';
+                footer.textContent = 'AST: ' + data.nodeCount + ' top-level nodes';
+                container.appendChild(footer);
+
+                showResultDom('parseResult', container);
+            } catch (e) {
+                showResult('parseResult', e.message, 'error');
+            } finally { clearLoading('parseBtn', 'parseResult'); }
+        }
+
+        // --- Button event delegation ---
+        document.addEventListener('click', function(e) {
+            var action = e.target.getAttribute('data-action');
+            if (!action) return;
+            if (action === 'health') checkHealth();
+            else if (action === 'chat') sendChat();
+            else if (action === 'embed') embedText();
+            else if (action === 'search') searchVectors();
+            else if (action === 'parse') parseCode();
+        });
+
+        // Auto-check health on load
+        document.addEventListener('DOMContentLoaded', checkHealth);
+    </script>
+</body>
+</html>

@@ -10,9 +10,6 @@ data class HealthResponse(val status: String)
 
 fun Application.configureRouting() {
     routing {
-        get("/") {
-            call.respondText("Hello World!")
-        }
         get("/health") {
             call.respond(HealthResponse(status = "ok"))
         }
