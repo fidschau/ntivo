@@ -21,6 +21,7 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 
 ```
 ntivo/
+├── docker-compose.yml       ← Neo4j + Qdrant for local dev
 ├── src/main/kotlin/
 │   ├── Application.kt      ← Ktor server entry point, ContentNegotiation setup
 │   ├── Routing.kt           ← HTTP routes (GET /health returns {"status":"ok"})
@@ -62,6 +63,7 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Environment variables for secrets: `NTIVO_GEMINI_API_KEY`, `NTIVO_ANTHROPIC_API_KEY`, `NTIVO_NEO4J_URI`, `NTIVO_NEO4J_PASSWORD`, `NTIVO_QDRANT_URL`
 - Secrets loaded from environment, never hardcoded, never committed
 - Graph node IDs: `{type}:{orgId}:{sourceId}` e.g. `CODE:acme:BiometricViewModel#authenticate`
+- Local dev defaults: Neo4j at `bolt://localhost:7687` (user: `neo4j`, pass: `ntivo_dev_password`), Qdrant at `http://localhost:6333` (gRPC: `localhost:6334`), Neo4j browser at `http://localhost:7474`
 
 ## Commands
 
@@ -74,8 +76,11 @@ curl http://localhost:8080/health   # Verify server is running
 # Run the standalone agent (separate Gradle task):
 NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
 
-# Docker (not set up yet — coming soon):
-docker compose up                  # Start Neo4j + Qdrant
+# Docker services (Neo4j + Qdrant):
+docker compose up -d               # Start Neo4j + Qdrant (background)
+docker compose down                # Stop services (data preserved)
+docker compose down -v             # Stop + wipe all data (fresh start)
+docker compose ps                  # Check service status
 ```
 
 ## Current phase
@@ -84,7 +89,7 @@ docker compose up                  # Start Neo4j + Qdrant
 
 1. ~~Ktor project with GET /health~~ ✅
 2. ~~Koog agent talking to Gemini~~ ✅
-3. Neo4j + Qdrant running locally via Docker Compose
+3. ~~Neo4j + Qdrant running locally via Docker Compose~~ ✅
 4. First embedding with `gemini-embedding-001`
 5. First Tree-sitter parse of a Kotlin file
 
