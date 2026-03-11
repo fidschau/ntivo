@@ -39,6 +39,10 @@ dependencies {
     implementation("io.qdrant:client:1.17.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.1")
 
+    // Tree-sitter code parser (supports x86_64 + aarch64 on macOS/Linux/Windows)
+    implementation("io.github.bonede:tree-sitter:0.24.4")
+    implementation("io.github.bonede:tree-sitter-kotlin:0.3.8.1")
+
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
@@ -58,4 +62,12 @@ tasks.register<JavaExec>("runEmbeddingDemo") {
     group = "application"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "io.ntivo.EmbeddingDemoKt"
+}
+
+// Run the Tree-sitter parsing demo (parses Kotlin source, extracts functions)
+tasks.register<JavaExec>("runTreeSitterDemo") {
+    description = "Run the Tree-sitter Kotlin parsing demo"
+    group = "application"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "io.ntivo.TreeSitterDemoKt"
 }

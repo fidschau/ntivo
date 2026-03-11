@@ -27,7 +27,8 @@ ntivo/
 │   ├── EmbeddingDemo.kt     ← Gemini embedding + Qdrant storage demo
 │   ├── GeminiEmbedder.kt    ← Custom Embedder with taskType support (implements Koog Embedder)
 │   ├── Routing.kt           ← HTTP routes (GET /health returns {"status":"ok"})
-│   └── SimpleAgent.kt       ← Standalone Koog agent with Gemini (interactive REPL)
+│   ├── SimpleAgent.kt       ← Standalone Koog agent with Gemini (interactive REPL)
+│   └── TreeSitterDemo.kt    ← Tree-sitter Kotlin parser demo (extracts functions/classes)
 ├── src/main/resources/
 │   ├── application.yaml     ← Ktor config (port 8080, module reference)
 │   └── logback.xml
@@ -59,6 +60,15 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Koog's built-in `GoogleLLMClient` does NOT pass `taskType` to the Gemini embedding API. Use our custom `GeminiEmbedder` instead — it implements Koog's `Embedder` interface and adds `taskType` support.
 - Qdrant Java client (`io.qdrant:client`) uses gRPC on port 6334. Use `kotlinx-coroutines-guava` for `.await()` on `ListenableFuture` returns.
 
+## Tree-sitter usage
+
+- JVM binding: `io.github.bonede:tree-sitter:0.24.4` + `io.github.bonede:tree-sitter-kotlin:0.3.8.1` (supports x86_64 + aarch64 on macOS/Linux/Windows)
+- Package: `org.treesitter` (not `io.github.bonede` — Maven group ≠ Java package)
+- Key classes: `TSParser`, `TSNode`, `TSTree`, `TSPoint`, `TreeSitterKotlin`
+- Kotlin grammar AST nodes: `function_declaration` (with children: `simple_identifier`, `user_type` for receiver, `function_value_parameters`, `function_body`), `class_declaration` (with `type_identifier`)
+- Extension functions: detected by a `user_type` child + `.` child before the function name
+- Cleanup: no `close()` needed — uses GC-based cleanup via `CleanerRunner`
+
 ## Conventions
 
 - Kotlin code style: JetBrains official (`kotlin.code.style=official` in gradle.properties)
@@ -83,6 +93,9 @@ NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
 # Run the embedding demo (requires Qdrant running):
 NTIVO_GEMINI_API_KEY="..." ./gradlew runEmbeddingDemo
 
+# Run the Tree-sitter parsing demo (no API keys needed):
+./gradlew runTreeSitterDemo
+
 # Docker services (Neo4j + Qdrant):
 docker compose up -d               # Start Neo4j + Qdrant (background)
 docker compose down                # Stop services (data preserved)
@@ -98,7 +111,7 @@ docker compose ps                  # Check service status
 2. ~~Koog agent talking to Gemini~~ ✅
 3. ~~Neo4j + Qdrant running locally via Docker Compose~~ ✅
 4. ~~First embedding with `gemini-embedding-001`~~ ✅
-5. First Tree-sitter parse of a Kotlin file
+5. ~~First Tree-sitter parse of a Kotlin file~~ ✅
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 
