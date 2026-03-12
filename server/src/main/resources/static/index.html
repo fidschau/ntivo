@@ -66,7 +66,22 @@
         }
         .btn:hover { background: #6a6af0; }
         .btn:disabled { background: #3a3a5a; color: #666; cursor: not-allowed; }
-        .btn-row { margin-bottom: 16px; }
+        .btn-secondary {
+            padding: 10px 24px; border-radius: 6px; border: 1px solid #7c7cff;
+            background: transparent; color: #7c7cff; font-size: 14px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .btn-secondary:hover { background: rgba(124, 124, 255, 0.1); }
+        .btn-secondary:disabled { border-color: #3a3a5a; color: #666; cursor: not-allowed; }
+        .btn-row { margin-bottom: 16px; display: flex; gap: 10px; align-items: center; }
+
+        /* Hints - educational callouts */
+        .hint {
+            background: #1a1a2e; border-left: 3px solid #7c7cff; border-radius: 0 6px 6px 0;
+            padding: 12px 14px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;
+            color: #aaa;
+        }
+        .hint strong { color: #c0c0d0; }
 
         /* Results */
         .result {
@@ -81,6 +96,13 @@
         .search-card {
             background: #12122a; border: 1px solid #2a2a3d; border-radius: 6px;
             padding: 12px 16px; margin-bottom: 8px;
+        }
+        .search-card-text {
+            background: #0f0f1a; border-radius: 4px; padding: 10px 12px;
+            margin-top: 8px; font-size: 12px; color: #c0c0d0;
+            white-space: pre-wrap; word-break: break-word;
+            max-height: 120px; overflow-y: auto;
+            font-family: "JetBrains Mono", "Fira Code", monospace;
         }
 
         /* Function table */
@@ -111,7 +133,7 @@
         <div class="tabs">
             <button class="tab-btn active" data-tab="health">Health</button>
             <button class="tab-btn" data-tab="chat">Agent Chat</button>
-            <button class="tab-btn" data-tab="embed">Embedding</button>
+            <button class="tab-btn" data-tab="embed">Embed + Store</button>
             <button class="tab-btn" data-tab="search">Vector Search</button>
             <button class="tab-btn" data-tab="parse">Tree-sitter</button>
         </div>
@@ -135,21 +157,36 @@
             <div id="chatResult" class="result empty">Agent response will appear here.</div>
         </div>
 
-        <!-- Embed Tab -->
+        <!-- Embed + Store Tab -->
         <div id="tab-embed" class="tab-content">
+            <div class="hint">
+                <strong>How this works:</strong> Gemini converts your text into a 3072-dimensional vector
+                (a list of numbers that capture its meaning). Similar texts produce similar vectors.
+                <strong>Embed</strong> shows you the raw vector. <strong>Embed &amp; Store</strong> saves it
+                to Qdrant so you can search for it on the Vector Search tab.
+            </div>
             <label for="embedText">Text or code to embed</label>
             <textarea id="embedText" rows="5" placeholder="Paste code or text to embed..."></textarea>
-            <label for="embedTaskType">Task Type</label>
-            <select id="embedTaskType">
-                <option value="RETRIEVAL_DOCUMENT">RETRIEVAL_DOCUMENT (indexing code/docs)</option>
-                <option value="RETRIEVAL_QUERY">RETRIEVAL_QUERY (search queries)</option>
-                <option value="CODE_RETRIEVAL_QUERY">CODE_RETRIEVAL_QUERY (code search)</option>
-                <option value="SEMANTIC_SIMILARITY">SEMANTIC_SIMILARITY (drift detection)</option>
-                <option value="CLASSIFICATION">CLASSIFICATION</option>
-                <option value="CLUSTERING">CLUSTERING</option>
-            </select>
+            <div class="row">
+                <div>
+                    <label for="embedTaskType">Task Type</label>
+                    <select id="embedTaskType">
+                        <option value="RETRIEVAL_DOCUMENT">RETRIEVAL_DOCUMENT (indexing code/docs)</option>
+                        <option value="RETRIEVAL_QUERY">RETRIEVAL_QUERY (search queries)</option>
+                        <option value="CODE_RETRIEVAL_QUERY">CODE_RETRIEVAL_QUERY (code search)</option>
+                        <option value="SEMANTIC_SIMILARITY">SEMANTIC_SIMILARITY (drift detection)</option>
+                        <option value="CLASSIFICATION">CLASSIFICATION</option>
+                        <option value="CLUSTERING">CLUSTERING</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="embedLabel">Label (for stored vectors)</label>
+                    <input type="text" id="embedLabel" placeholder="e.g. health check function" />
+                </div>
+            </div>
             <div class="btn-row">
-                <button class="btn" id="embedBtn" data-action="embed">Embed</button>
+                <button class="btn-secondary" id="embedBtn" data-action="embed">Embed Only</button>
+                <button class="btn" id="storeBtn" data-action="store">Embed &amp; Store in Qdrant</button>
             </div>
             <label>Result</label>
             <div id="embedResult" class="result empty">Embedding vector preview will appear here.</div>
@@ -157,8 +194,13 @@
 
         <!-- Search Tab -->
         <div id="tab-search" class="tab-content">
+            <div class="hint">
+                <strong>How this works:</strong> Your query gets embedded into a vector, then Qdrant finds
+                the most similar stored vectors using cosine similarity. Higher score = closer match.
+                <strong>Tip:</strong> First store some text on the Embed + Store tab, then search for it here.
+            </div>
             <label for="searchQuery">Natural language query</label>
-            <input type="text" id="searchQuery" placeholder="e.g. health check endpoint" />
+            <input type="text" id="searchQuery" placeholder="e.g. health check endpoint, user authentication, error handling..." />
             <div class="row">
                 <div>
                     <label for="searchCollection">Collection</label>
@@ -173,7 +215,7 @@
                 <button class="btn" id="searchBtn" data-action="search">Search</button>
             </div>
             <label>Results</label>
-            <div id="searchResult" class="result empty">Search results will appear here.</div>
+            <div id="searchResult" class="result empty">Search results will appear here. Store some text first using the Embed + Store tab.</div>
         </div>
 
         <!-- Parse Tab -->
@@ -225,12 +267,6 @@ private fun computeHash(content: String): String {
         });
 
         // --- Helpers ---
-        function escapeHtml(text) {
-            var div = document.createElement('div');
-            div.appendChild(document.createTextNode(text));
-            return div.textContent;
-        }
-
         function showResult(id, text, type) {
             var el = document.getElementById(id);
             el.classList.remove('empty');
@@ -299,7 +335,7 @@ private fun computeHash(content: String): String {
             } finally { clearLoading('chatBtn', 'chatResult'); }
         }
 
-        // --- Embed ---
+        // --- Embed (view vector only) ---
         async function embedText() {
             var text = document.getElementById('embedText').value.trim();
             if (!text) return showResult('embedResult', "'text' cannot be empty.", 'error');
@@ -307,13 +343,35 @@ private fun computeHash(content: String): String {
             setLoading('embedBtn', 'embedResult');
             try {
                 var data = await apiCall('/api/embed', { text: text, taskType: taskType });
-                var preview = data.preview.map(function(v) { return v.toFixed(6); }).join('\n');
+                var preview = data.preview.map(function(v) { return v.toFixed(6); }).join(', ');
                 var output = 'Dimension: ' + data.dimension + '  |  Task type: ' + data.taskType +
-                    '\n\nFirst 10 values:\n' + preview + '\n\n... (' + data.dimension + ' total)';
+                    '\n\nVector preview (first 10 of ' + data.dimension + ' values):\n[' + preview + ', ...]' +
+                    '\n\nThese numbers capture the "meaning" of your text. Similar texts produce' +
+                    '\nsimilar numbers. Use "Embed & Store" to save this to Qdrant for searching.';
                 showResult('embedResult', output);
             } catch (e) {
                 showResult('embedResult', e.message, 'error');
             } finally { clearLoading('embedBtn', 'embedResult'); }
+        }
+
+        // --- Store (embed + save to Qdrant) ---
+        async function storeText() {
+            var text = document.getElementById('embedText').value.trim();
+            if (!text) return showResult('embedResult', "'text' cannot be empty.", 'error');
+            var label = document.getElementById('embedLabel').value.trim();
+            setLoading('storeBtn', 'embedResult');
+            try {
+                var data = await apiCall('/api/store', { text: text, label: label });
+                var output = 'Stored in Qdrant!' +
+                    '\n\n  Collection:  ' + data.collection +
+                    '\n  Dimension:   ' + data.dimension +
+                    '\n  Point ID:    ' + data.pointId +
+                    '\n\nYour text has been embedded and saved. Go to the "Vector Search"' +
+                    '\ntab and search for something related to find it.';
+                showResult('embedResult', output);
+            } catch (e) {
+                showResult('embedResult', e.message, 'error');
+            } finally { clearLoading('storeBtn', 'embedResult'); }
         }
 
         // --- Search ---
@@ -326,25 +384,50 @@ private fun computeHash(content: String): String {
             try {
                 var data = await apiCall('/api/search', { query: query, collection: collection, limit: limit });
                 if (data.results.length === 0) {
-                    showResult('searchResult', 'No results found.');
+                    showResult('searchResult', 'No results found. Try storing some text first on the Embed + Store tab.');
                     return;
                 }
                 var container = document.createDocumentFragment();
                 data.results.forEach(function(r, i) {
                     var card = document.createElement('div');
                     card.className = 'search-card';
-                    var scoreDiv = document.createElement('div');
-                    scoreDiv.style.cssText = 'font-size:14px;font-weight:600;color:#7c7cff;margin-bottom:6px';
-                    scoreDiv.textContent = '#' + (i+1) + '  Score: ' + r.score.toFixed(4);
-                    card.appendChild(scoreDiv);
-                    var payloadDiv = document.createElement('div');
-                    payloadDiv.style.cssText = 'font-size:12px;color:#aaa';
-                    Object.keys(r.payload).forEach(function(k) {
-                        var line = document.createElement('div');
-                        line.textContent = '  ' + k + ': ' + r.payload[k];
-                        payloadDiv.appendChild(line);
+
+                    // Score + label header
+                    var headerDiv = document.createElement('div');
+                    headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+                    var scoreSpan = document.createElement('span');
+                    scoreSpan.style.cssText = 'font-size:14px;font-weight:600;color:#7c7cff';
+                    scoreSpan.textContent = '#' + (i+1) + '  Score: ' + r.score.toFixed(4);
+                    headerDiv.appendChild(scoreSpan);
+                    if (r.payload.label && r.payload.label !== 'Unlabeled') {
+                        var labelSpan = document.createElement('span');
+                        labelSpan.style.cssText = 'font-size:12px;color:#4ade80;background:#1a2e1a;padding:2px 8px;border-radius:4px';
+                        labelSpan.textContent = r.payload.label;
+                        headerDiv.appendChild(labelSpan);
+                    }
+                    card.appendChild(headerDiv);
+
+                    // Show the stored text content if available
+                    if (r.payload.text) {
+                        var textDiv = document.createElement('div');
+                        textDiv.className = 'search-card-text';
+                        textDiv.textContent = r.payload.text;
+                        card.appendChild(textDiv);
+                    }
+
+                    // Show other metadata (source, function_name, etc.) below the text
+                    var metaKeys = Object.keys(r.payload).filter(function(k) {
+                        return k !== 'text' && k !== 'label';
                     });
-                    card.appendChild(payloadDiv);
+                    if (metaKeys.length > 0) {
+                        var metaDiv = document.createElement('div');
+                        metaDiv.style.cssText = 'font-size:11px;color:#666;margin-top:6px';
+                        metaDiv.textContent = metaKeys.map(function(k) {
+                            return k + ': ' + r.payload[k];
+                        }).join('  |  ');
+                        card.appendChild(metaDiv);
+                    }
+
                     container.appendChild(card);
                 });
                 showResultDom('searchResult', container);
@@ -425,6 +508,7 @@ private fun computeHash(content: String): String {
             if (action === 'health') checkHealth();
             else if (action === 'chat') sendChat();
             else if (action === 'embed') embedText();
+            else if (action === 'store') storeText();
             else if (action === 'search') searchVectors();
             else if (action === 'parse') parseCode();
         });

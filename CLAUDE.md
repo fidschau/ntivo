@@ -17,31 +17,48 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 - **Build:** Gradle with Kotlin DSL, JDK 21
 - **Serialization:** kotlinx.serialization (already configured with `plugin.serialization`)
 
-## Project structure (current)
+## Project structure (multi-module KMP)
 
 ```
 ntivo/
-├── docker-compose.yml       ← Neo4j + Qdrant for local dev
-├── src/main/kotlin/
-│   ├── ApiRouting.kt        ← REST API endpoints: /api/chat, /api/embed, /api/search, /api/parse
-│   ├── Application.kt       ← Ktor server entry point, ContentNegotiation setup
-│   ├── EmbeddingDemo.kt     ← Gemini embedding + Qdrant storage demo
-│   ├── GeminiEmbedder.kt    ← Custom Embedder with taskType support (implements Koog Embedder)
-│   ├── Routing.kt           ← HTTP routes (GET /health)
-│   ├── SimpleAgent.kt       ← Standalone Koog agent with Gemini (interactive REPL)
-│   ├── StaticContent.kt     ← Serves static web dev console from resources/static/
-│   └── TreeSitterDemo.kt    ← Tree-sitter Kotlin parser demo (extracts functions/classes)
-├── src/main/resources/
-│   ├── static/
-│   │   └── index.html       ← Web dev console (single-file HTML/CSS/JS, dark theme)
-│   ├── application.yaml     ← Ktor config (port 8080, module reference)
-│   └── logback.xml
-├── build.gradle.kts
-├── gradle.properties        ← kotlin 2.3.0, ktor 3.4.0, logback 1.4.14
-└── settings.gradle.kts
+├── build.gradle.kts              ← Root: all plugin versions (apply false)
+├── settings.gradle.kts           ← Includes :shared, :server, :web
+├── gradle.properties             ← kotlin 2.3.0, ktor 3.4.0, compose 1.10.2
+├── docker-compose.yml            ← Neo4j + Qdrant for local dev
+├── shared/                       ← KMP module (jvm + wasmJs)
+│   ├── build.gradle.kts
+│   └── src/commonMain/kotlin/io/ntivo/shared/
+│       └── ApiModels.kt          ← All @Serializable request/response models (shared contract)
+├── server/                       ← JVM module (Ktor backend)
+│   ├── build.gradle.kts          ← depends on :shared
+│   └── src/main/
+│       ├── kotlin/io/ntivo/
+│       │   ├── ApiRouting.kt     ← REST API: /api/chat, /api/embed, /api/store, /api/search, /api/parse
+│       │   ├── Application.kt    ← Ktor entry point, ContentNegotiation + CORS
+│       │   ├── EmbeddingDemo.kt  ← Gemini embedding + Qdrant demo (seeds 6 snippets)
+│       │   ├── GeminiEmbedder.kt ← Custom Embedder with taskType support
+│       │   ├── Routing.kt        ← GET /health
+│       │   ├── SimpleAgent.kt    ← Standalone Koog agent REPL
+│       │   ├── StaticContent.kt  ← Serves legacy HTML console from resources/static/
+│       │   └── TreeSitterDemo.kt ← Tree-sitter parser demo
+│       └── resources/
+│           ├── static/index.html ← Legacy HTML dev console (fallback)
+│           ├── application.yaml
+│           └── logback.xml
+└── web/                          ← KMP module (Compose for Web / Kotlin/Wasm)
+    ├── build.gradle.kts          ← wasmJs target, webpack proxy to :8080
+    └── src/wasmJsMain/
+        ├── kotlin/io/ntivo/web/
+        │   ├── Main.kt           ← ComposeViewport entry point
+        │   ├── App.kt            ← Root composable (theme + tabs + routing)
+        │   ├── theme/NtivoTheme.kt
+        │   ├── components/       ← NtivoHeader, NtivoTabs, ResultPanel
+        │   ├── screens/          ← HealthScreen + stub screens
+        │   └── api/NtivoApiClient.kt ← Ktor client using shared models
+        └── resources/index.html  ← Minimal HTML host for Wasm canvas
 ```
 
-Package: `io.ntivo`. All Kotlin files use this package.
+Packages: `io.ntivo` (server), `io.ntivo.shared` (shared models), `io.ntivo.web` (web UI).
 
 ## Architecture rules
 
@@ -79,8 +96,9 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Data classes use `@Serializable` for JSON responses
 - Ktor routes defined as `Application.configureX()` extension functions (`configureRouting()`, `configureApiRouting()`, `configureStaticContent()`)
 - Static content served last in Application.module() so explicit routes take priority
-- Web dev console: single-file HTML/CSS/JS in `src/main/resources/static/index.html` — will migrate to KMP/Compose for Web when the project outgrows this
-- API endpoints under `/api/` prefix with `@Serializable` request/response data classes in ApiRouting.kt
+- Web UI: Compose for Web (Kotlin/Wasm) in `web/` module. Legacy HTML console kept at `server/src/main/resources/static/` as fallback.
+- API models: `@Serializable` data classes in `shared/src/commonMain/kotlin/io/ntivo/shared/ApiModels.kt` — shared between server and web modules
+- API endpoints under `/api/` prefix, route handlers in `server/.../ApiRouting.kt`
 - Environment variables for secrets: `NTIVO_GEMINI_API_KEY`, `NTIVO_ANTHROPIC_API_KEY`, `NTIVO_NEO4J_URI`, `NTIVO_NEO4J_PASSWORD`, `NTIVO_QDRANT_URL`
 - Secrets loaded from environment, never hardcoded, never committed
 - Graph node IDs: `{type}:{orgId}:{sourceId}` e.g. `CODE:acme:BiometricViewModel#authenticate`
@@ -89,22 +107,29 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 ## Commands
 
 ```bash
-./gradlew build                    # Build everything
-./gradlew run                      # Start Ktor server on :8080 (dev console at http://localhost:8080)
-./gradlew compileKotlin            # Compile check only
-curl http://localhost:8080/health   # Verify server is running
-# Open http://localhost:8080 in a browser for the web dev console
+# Build
+./gradlew build                              # Build all modules (shared + server + web)
+./gradlew :server:compileKotlin              # Compile server only
+./gradlew :web:compileKotlinWasmJs           # Compile web module only
+./gradlew :shared:build                      # Build shared module (jvm + wasmJs)
 
-# Run the standalone agent (separate Gradle task):
-NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
+# Run (development — two terminals)
+./gradlew :server:run                        # Terminal 1: Ktor server on :8080
+./gradlew :web:wasmJsBrowserDevelopmentRun   # Terminal 2: Compose for Web on :8081 (hot reload)
+# Webpack proxy routes /api/* and /health from :8081 → :8080
 
-# Run the embedding demo (requires Qdrant running):
-NTIVO_GEMINI_API_KEY="..." ./gradlew runEmbeddingDemo
+# Run (legacy HTML console)
+./gradlew :server:run                        # Open http://localhost:8080 for legacy HTML console
 
-# Run the Tree-sitter parsing demo (no API keys needed):
-./gradlew runTreeSitterDemo
+# Health check
+curl http://localhost:8080/health
 
-# Docker services (Neo4j + Qdrant):
+# Standalone demos (Gradle tasks in server module)
+NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runAgent
+NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runEmbeddingDemo
+./gradlew :server:runTreeSitterDemo
+
+# Docker services (Neo4j + Qdrant)
 docker compose up -d               # Start Neo4j + Qdrant (background)
 docker compose down                # Stop services (data preserved)
 docker compose down -v             # Stop + wipe all data (fresh start)
@@ -121,7 +146,7 @@ docker compose ps                  # Check service status
 4. ~~First embedding with `gemini-embedding-001`~~ ✅
 5. ~~First Tree-sitter parse of a Kotlin file~~ ✅
 
-**Bonus: Web Dev Console** — static HTML dev console at `http://localhost:8080` with tabs for Health, Agent Chat, Embedding, Vector Search, and Tree-sitter Parse. API endpoints under `/api/` for all Phase 1 demos.
+**Bonus: Web Dev Console** — Compose for Web (Kotlin/Wasm) dev console with dark theme, 5 tabs (Health, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse). Health tab fully functional; other tabs are stubs pending migration from legacy HTML console. Legacy HTML console still accessible at `http://localhost:8080`. API endpoints under `/api/` for all Phase 1 demos.
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 

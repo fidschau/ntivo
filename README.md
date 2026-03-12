@@ -99,6 +99,7 @@ The server starts at `http://localhost:8080` with a built-in web dev console for
 | `GET /health` | Health check | Nothing |
 | `POST /api/chat` | Send a prompt to the Koog agent | `NTIVO_GEMINI_API_KEY` |
 | `POST /api/embed` | Embed text with task type | `NTIVO_GEMINI_API_KEY` |
+| `POST /api/store` | Embed text and store in Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/search` | Vector search over Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/parse` | Parse Kotlin code with Tree-sitter | Nothing |
 
@@ -165,4 +166,4 @@ Apache 2.0
 
 ## Name
 
-*Ntivo* comes from the Xitsonga root word for "knowledge" (*ntivo*), as in *vutivi*. Parallel to *zivo* / *ruzivo* in Shona — both Bantu languages sharing the same linguistic heritage.
+*Ntivo* comes from the Xitsonga root word for "knowledge" (*ntivo*), as in *vutivi*.

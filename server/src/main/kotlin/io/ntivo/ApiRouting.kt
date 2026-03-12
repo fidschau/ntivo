@@ -8,56 +8,20 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.qdrant.client.PointIdFactory.id
 import io.qdrant.client.QdrantClient
 import io.qdrant.client.QdrantGrpcClient
+import io.qdrant.client.ValueFactory.value
+import io.qdrant.client.VectorsFactory.vectors
 import io.qdrant.client.WithPayloadSelectorFactory
+import io.qdrant.client.grpc.Collections.Distance
+import io.qdrant.client.grpc.Collections.VectorParams
+import io.qdrant.client.grpc.Points.PointStruct
 import io.qdrant.client.grpc.Points.SearchPoints
 import kotlinx.coroutines.guava.await
-import kotlinx.serialization.Serializable
+import io.ntivo.shared.*
 import org.treesitter.TSParser
 import org.treesitter.TreeSitterKotlin
-
-// --- Request/response models ---
-
-@Serializable
-data class ChatRequest(val prompt: String)
-
-@Serializable
-data class ChatResponse(val response: String)
-
-@Serializable
-data class EmbedRequest(val text: String, val taskType: String = "RETRIEVAL_DOCUMENT")
-
-@Serializable
-data class EmbedResponse(val dimension: Int, val preview: List<Double>, val taskType: String)
-
-@Serializable
-data class SearchRequest(val query: String, val collection: String = "chunks_demo", val limit: Int = 5)
-
-@Serializable
-data class SearchResponse(val results: List<SearchResultItem>)
-
-@Serializable
-data class SearchResultItem(val score: Float, val payload: Map<String, String>)
-
-@Serializable
-data class ParseRequest(val code: String)
-
-@Serializable
-data class ParseResponse(val functions: List<ParsedFunction>, val classes: List<String>, val nodeCount: Int)
-
-@Serializable
-data class ParsedFunction(
-    val name: String,
-    val receiver: String? = null,
-    val parameters: String,
-    val startLine: Int,
-    val endLine: Int,
-    val bodyLength: Int
-)
-
-@Serializable
-data class ErrorResponse(val error: String)
 
 // --- API routing ---
 
@@ -126,6 +90,77 @@ fun Application.configureApiRouting() {
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.BadGateway,
                         ErrorResponse("Embedding error: ${e.message}"))
+                }
+            }
+
+            // POST /api/store — Embed text and store it in Qdrant
+            post("/store") {
+                val request = call.receive<StoreRequest>()
+                if (request.text.isBlank()) {
+                    return@post call.respond(HttpStatusCode.BadRequest,
+                        ErrorResponse("'text' is required and cannot be blank."))
+                }
+                val emb = embedder
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
+
+                val qdrant: QdrantClient
+                try {
+                    qdrant = QdrantClient(
+                        QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
+                    )
+                } catch (e: Exception) {
+                    return@post call.respond(HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse("Cannot connect to Qdrant at localhost:6334. Run: docker compose up -d"))
+                }
+
+                try {
+                    // Create collection if it doesn't exist
+                    val collections = qdrant.listCollectionsAsync().await()
+                    if (!collections.contains(request.collection)) {
+                        qdrant.createCollectionAsync(
+                            request.collection,
+                            VectorParams.newBuilder()
+                                .setDistance(Distance.Cosine)
+                                .setSize(3072)  // gemini-embedding-001 dimensions
+                                .build()
+                        ).await()
+                    }
+
+                    // Embed with RETRIEVAL_DOCUMENT task type (for indexing)
+                    val vector = emb.embed(request.text, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
+                    val floatValues = vector.values.map { it.toFloat() }
+
+                    // Use millis as a simple unique ID
+                    val pointId = System.currentTimeMillis()
+
+                    // Store vector with the actual text in the payload
+                    qdrant.upsertAsync(
+                        request.collection,
+                        listOf(
+                            PointStruct.newBuilder()
+                                .setId(id(pointId))
+                                .setVectors(vectors(floatValues))
+                                .putAllPayload(mapOf(
+                                    "text" to value(request.text.take(1000)),
+                                    "label" to value(request.label.ifBlank { "Unlabeled" }),
+                                    "source" to value("dev_console")
+                                ))
+                                .build()
+                        )
+                    ).await()
+
+                    call.respond(StoreResponse(
+                        stored = true,
+                        collection = request.collection,
+                        dimension = vector.dimension,
+                        pointId = pointId
+                    ))
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError,
+                        ErrorResponse("Store error: ${e.message}"))
+                } finally {
+                    qdrant.close()
                 }
             }
 

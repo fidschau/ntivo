@@ -35,5 +35,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### Kotlin/Wasm ###
+.kotlin/
+kotlin-js-store/
+
 ### Claude Code ###
 .claude/

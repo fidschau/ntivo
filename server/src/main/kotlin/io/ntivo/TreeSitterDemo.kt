@@ -18,7 +18,7 @@ fun main() {
     parser.setLanguage(TreeSitterKotlin())
 
     // Parse our own Routing.kt as a real-world example
-    val sourceFile = File("src/main/kotlin/Routing.kt")
+    val sourceFile = File("server/src/main/kotlin/io/ntivo/Routing.kt")
     val sourceCode = sourceFile.readText()
 
     println("Parsing: ${sourceFile.path} (${sourceCode.length} chars)")
