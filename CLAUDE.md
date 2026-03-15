@@ -39,10 +39,9 @@ ntivo/
 │       │   ├── GeminiEmbedder.kt ← Custom Embedder with taskType support
 │       │   ├── Routing.kt        ← GET /health
 │       │   ├── SimpleAgent.kt    ← Standalone Koog agent REPL
-│       │   ├── StaticContent.kt  ← Serves legacy HTML console from resources/static/
+│       │   ├── StaticContent.kt  ← Serves Compose for Web production build
 │       │   └── TreeSitterDemo.kt ← Tree-sitter parser demo
 │       └── resources/
-│           ├── static/index.html ← Legacy HTML dev console (fallback)
 │           ├── application.yaml
 │           └── logback.xml
 └── web/                          ← KMP module (Compose for Web / Kotlin/Wasm)
@@ -53,7 +52,7 @@ ntivo/
         │   ├── App.kt            ← Root composable (theme + tabs + routing)
         │   ├── theme/NtivoTheme.kt
         │   ├── components/       ← NtivoHeader, NtivoTabs, ResultPanel
-        │   ├── screens/          ← HealthScreen + stub screens
+        │   ├── screens/          ← HealthScreen, ChatScreen, EmbedScreen, SearchScreen, ParseScreen
         │   └── api/NtivoApiClient.kt ← Ktor client using shared models
         └── resources/index.html  ← Minimal HTML host for Wasm canvas
 ```
@@ -96,7 +95,7 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 - Data classes use `@Serializable` for JSON responses
 - Ktor routes defined as `Application.configureX()` extension functions (`configureRouting()`, `configureApiRouting()`, `configureStaticContent()`)
 - Static content served last in Application.module() so explicit routes take priority
-- Web UI: Compose for Web (Kotlin/Wasm) in `web/` module. Legacy HTML console kept at `server/src/main/resources/static/` as fallback.
+- Web UI: Compose for Web (Kotlin/Wasm) in `web/` module. Production build served by Ktor at `/`.
 - API models: `@Serializable` data classes in `shared/src/commonMain/kotlin/io/ntivo/shared/ApiModels.kt` — shared between server and web modules
 - API endpoints under `/api/` prefix, route handlers in `server/.../ApiRouting.kt`
 - Environment variables for secrets: `NTIVO_GEMINI_API_KEY`, `NTIVO_ANTHROPIC_API_KEY`, `NTIVO_NEO4J_URI`, `NTIVO_NEO4J_PASSWORD`, `NTIVO_QDRANT_URL`
@@ -113,13 +112,19 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 ./gradlew :web:compileKotlinWasmJs           # Compile web module only
 ./gradlew :shared:build                      # Build shared module (jvm + wasmJs)
 
-# Run (development — two terminals)
+# Run (production — single command, builds web + serves at :8080)
+./gradlew :server:run                        # Builds Compose for Web → serves at http://localhost:8080
+
+# Run (development — two terminals, hot reload)
 ./gradlew :server:run                        # Terminal 1: Ktor server on :8080
 ./gradlew :web:wasmJsBrowserDevelopmentRun   # Terminal 2: Compose for Web on :8081 (hot reload)
 # Webpack proxy routes /api/* and /health from :8081 → :8080
 
-# Run (legacy HTML console)
-./gradlew :server:run                        # Open http://localhost:8080 for legacy HTML console
+# Run (dev script — manages both)
+./dev.sh                                     # Full stack: Docker + server + web (hot reload)
+./dev.sh --prod                              # Build web + run server (single process)
+./dev.sh --quick                             # Server + web only, no Docker
+./dev.sh --server                            # Server only
 
 # Health check
 curl http://localhost:8080/health
@@ -146,7 +151,7 @@ docker compose ps                  # Check service status
 4. ~~First embedding with `gemini-embedding-001`~~ ✅
 5. ~~First Tree-sitter parse of a Kotlin file~~ ✅
 
-**Bonus: Web Dev Console** — Compose for Web (Kotlin/Wasm) dev console with dark theme, 5 tabs (Health, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse). Health tab fully functional; other tabs are stubs pending migration from legacy HTML console. Legacy HTML console still accessible at `http://localhost:8080`. API endpoints under `/api/` for all Phase 1 demos.
+**Bonus: Web Dev Console** — Compose for Web (Kotlin/Wasm) dev console with dark theme, 5 fully functional tabs (Health, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse). Served at `http://localhost:8080` via production build. API endpoints under `/api/` for all Phase 1 demos.
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 

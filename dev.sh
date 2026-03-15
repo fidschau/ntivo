@@ -3,7 +3,7 @@
 # Ntivo dev script — starts everything you need
 # Usage:  ./dev.sh          (full stack: Docker + server + Compose for Web)
 #         ./dev.sh --quick  (server + web only, no Docker)
-#         ./dev.sh --server (server only, legacy HTML console)
+#         ./dev.sh --server (server only)
 #         ./dev.sh --prod   (build web + run server — single process, no hot reload)
 # ──────────────────────────────────────────────
 
@@ -39,7 +39,6 @@ if [ "$PROD" = true ]; then
   echo ""
   echo "🚀 Starting Ntivo server (production mode)..."
   echo "   Compose UI:  http://localhost:8080"
-  echo "   Legacy HTML: http://localhost:8080/legacy"
   echo "   Health:      http://localhost:8080/health"
   echo ""
   (sleep 4 && open http://localhost:8080 2>/dev/null || true) &
@@ -48,7 +47,7 @@ fi
 
 # ── Server only mode ──
 if [ "$SERVER_ONLY" = true ]; then
-  echo "🚀 Starting Ntivo server only (legacy HTML console)..."
+  echo "🚀 Starting Ntivo server only..."
   echo "   Console: http://localhost:8080"
   echo "   Health:  http://localhost:8080/health"
   echo ""
@@ -59,7 +58,7 @@ fi
 # ── Full dev mode: server + Compose for Web ──
 echo "🚀 Starting Ntivo dev environment..."
 echo "   Compose UI:  http://localhost:8081  (Kotlin/Wasm, hot reload)"
-echo "   Legacy HTML: http://localhost:8080"
+echo "   Server API:  http://localhost:8080"
 echo "   Health:      http://localhost:8080/health"
 if [ "$QUICK" = false ]; then
   echo "   Neo4j:       http://localhost:7474"
