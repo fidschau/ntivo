@@ -4,14 +4,17 @@
 # Usage:  ./dev.sh          (full stack: Docker + server + Compose for Web)
 #         ./dev.sh --quick  (server + web only, no Docker)
 #         ./dev.sh --server (server only, legacy HTML console)
+#         ./dev.sh --prod   (build web + run server — single process, no hot reload)
 # ──────────────────────────────────────────────
 
 QUICK=false
 SERVER_ONLY=false
+PROD=false
 for arg in "$@"; do
   case "$arg" in
     --quick|-q)  QUICK=true ;;
     --server|-s) SERVER_ONLY=true ;;
+    --prod|-p)   PROD=true ;;
   esac
 done
 
@@ -27,6 +30,20 @@ if [ "$QUICK" = false ] && [ "$SERVER_ONLY" = false ]; then
   echo "🐳 Starting Docker services (Neo4j + Qdrant)..."
   docker compose up -d
   echo ""
+fi
+
+# ── Production mode: build web + run server as single process ──
+if [ "$PROD" = true ]; then
+  echo "📦 Building Compose for Web production bundle..."
+  ./gradlew :server:processResources --quiet
+  echo ""
+  echo "🚀 Starting Ntivo server (production mode)..."
+  echo "   Compose UI:  http://localhost:8080"
+  echo "   Legacy HTML: http://localhost:8080/legacy"
+  echo "   Health:      http://localhost:8080/health"
+  echo ""
+  (sleep 4 && open http://localhost:8080 2>/dev/null || true) &
+  exec ./gradlew :server:run
 fi
 
 # ── Server only mode ──

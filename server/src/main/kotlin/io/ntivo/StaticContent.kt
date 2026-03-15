@@ -4,12 +4,14 @@ import io.ktor.server.application.*
 import io.ktor.server.http.content.*
 import io.ktor.server.routing.*
 
-// Serves the static web dev console from /src/main/resources/static/.
-// Navigating to / in a browser loads index.html.
+// Serves the Compose for Web production build at / and legacy HTML console at /legacy.
 // Call this AFTER configureRouting() and configureApiRouting()
 // so explicit routes (/health, /api/*) take priority.
 fun Application.configureStaticContent() {
     routing {
-        staticResources("/", "static", index = "index.html")
+        // Compose for Web production build (copied by copyWebDist task)
+        staticResources("/", "static/compose", index = "index.html")
+        // Legacy HTML dev console as fallback
+        staticResources("/legacy", "static", index = "index.html")
     }
 }

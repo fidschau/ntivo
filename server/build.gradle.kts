@@ -53,6 +53,20 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
 
+// Copy the Compose for Web production build into server resources so a single
+// `./gradlew :server:run` serves both API and UI.
+val copyWebDist by tasks.registering(Copy::class) {
+    description = "Copy Compose for Web production build to server static resources"
+    group = "build"
+    dependsOn(":web:wasmJsBrowserProductionWebpack")
+    from(project(":web").layout.buildDirectory.dir("dist/wasmJs/productionExecutable"))
+    into(layout.buildDirectory.dir("resources/main/static/compose"))
+}
+
+tasks.named("processResources") {
+    dependsOn(copyWebDist)
+}
+
 // Separate task to run the standalone Koog agent (without starting the Ktor server)
 tasks.register<JavaExec>("runAgent") {
     description = "Run the standalone Koog agent REPL"
