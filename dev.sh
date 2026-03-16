@@ -66,9 +66,9 @@ if [ "$QUICK" = false ]; then
 fi
 echo ""
 
-# Pre-compile shared + web so webpack finds ntivo-web.mjs on clean builds
-echo "📦 Pre-compiling modules..."
-./gradlew :shared:build :web:compileKotlinWasmJs --quiet 2>/dev/null
+# Full dev build so webpack has all artifacts + npm deps on clean builds
+echo "📦 Pre-building modules (first run may take a minute)..."
+./gradlew :shared:build :web:wasmJsBrowserDevelopmentWebpack --quiet 2>/dev/null
 echo ""
 
 SERVER_PID=""
