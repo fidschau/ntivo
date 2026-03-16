@@ -66,9 +66,9 @@ if [ "$QUICK" = false ]; then
 fi
 echo ""
 
-# Build shared module first so both Gradle runs don't race on it
-echo "📦 Building shared module..."
-./gradlew :shared:build --quiet 2>/dev/null
+# Pre-compile shared + web so webpack finds ntivo-web.mjs on clean builds
+echo "📦 Pre-compiling modules..."
+./gradlew :shared:build :web:compileKotlinWasmJs --quiet 2>/dev/null
 echo ""
 
 SERVER_PID=""
