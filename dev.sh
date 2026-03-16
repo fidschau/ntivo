@@ -55,6 +55,15 @@ if [ "$SERVER_ONLY" = true ]; then
   exec ./gradlew :server:run
 fi
 
+# ── Kill stale processes from previous runs ──
+for port in 8080 8081; do
+  pid=$(lsof -ti:"$port" 2>/dev/null)
+  if [ -n "$pid" ]; then
+    echo "⚠️  Killing stale process on port $port (PID $pid)"
+    kill -9 $pid 2>/dev/null
+  fi
+done
+
 # ── Full dev mode: server + Compose for Web ──
 echo "🚀 Starting Ntivo dev environment..."
 echo "   Compose UI:  http://localhost:8081  (Kotlin/Wasm, hot reload)"
