@@ -31,10 +31,11 @@ fun App() {
                 onTabSelected = { selectedTab = it }
             )
 
-            // Scrollable content area
-            Box(
+            // Scrollable content area — weight(1f) fills remaining space after header+tabs
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
                 when (selectedTab) {
