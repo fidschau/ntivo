@@ -97,8 +97,16 @@ trap cleanup EXIT INT TERM
 ./gradlew :server:run &
 SERVER_PID=$!
 
-# Give the server a head start, then launch web dev server
-sleep 3
+# Wait for server to be healthy before starting web dev server
+echo "⏳ Waiting for server on :8080..."
+for i in $(seq 1 30); do
+  if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+    echo "✅ Server is healthy"
+    break
+  fi
+  sleep 1
+done
+
 ./gradlew :web:wasmJsBrowserDevelopmentRun &
 WEB_PID=$!
 
