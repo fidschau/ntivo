@@ -58,6 +58,13 @@ object NtivoApiClient {
         }.body()
     }
 
+    suspend fun agentChat(prompt: String, collection: String = "chunks_demo"): AgentChatResponse {
+        return client.post("$BASE_URL/api/agent-chat") {
+            contentType(ContentType.Application.Json)
+            setBody(AgentChatRequest(prompt = prompt, collection = collection))
+        }.body()
+    }
+
     suspend fun ragPipeline(code: String, collection: String = "chunks_demo"): RagPipelineResponse {
         return client.post("$BASE_URL/api/rag-pipeline") {
             contentType(ContentType.Application.Json)

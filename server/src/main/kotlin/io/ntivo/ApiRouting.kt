@@ -41,8 +41,47 @@ fun Application.configureApiRouting() {
 
     val embedder: GeminiEmbedder? = apiKey?.let { GeminiEmbedder(it) }
 
+    // Codebase agent with search tool (Phase 2 step 4)
+    val searchTools: CodeSearchTools? = embedder?.let { CodeSearchTools(it) }
+    val codebaseAgent = if (apiKey != null && embedder != null) {
+        createCodebaseAgent(apiKey, embedder)
+    } else null
+
     routing {
         route("/api") {
+
+            // POST /api/agent-chat — Codebase agent with search_codebase tool
+            post("/agent-chat") {
+                val request = call.receive<AgentChatRequest>()
+                if (request.prompt.isBlank()) {
+                    return@post call.respond(HttpStatusCode.BadRequest,
+                        ErrorResponse("'prompt' is required and cannot be blank."))
+                }
+                val agentInstance = codebaseAgent
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
+                val tools = searchTools
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse("Search tools not initialized."))
+
+                try {
+                    tools.clearCallLog()
+                    val result = agentInstance.run(request.prompt)
+                    call.respond(AgentChatResponse(
+                        response = result,
+                        toolCalls = tools.callLog.map { tc ->
+                            AgentToolCall(
+                                tool = tc.tool,
+                                args = tc.args,
+                                result = tc.resultSummary
+                            )
+                        }
+                    ))
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadGateway,
+                        ErrorResponse("Agent error: ${e.message}"))
+                }
+            }
 
             // POST /api/chat — Send a prompt to the Koog agent
             post("/chat") {

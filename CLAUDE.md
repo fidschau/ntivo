@@ -5,7 +5,7 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 ## Stack
 
 - **Language:** Kotlin. No Python. No TypeScript. All code is Kotlin unless a JVM library literally doesn't exist.
-- **AI agents:** Koog 0.6.4 (JetBrains, Apache 2.0) — stateful agent graphs. Koog also provides RAG and embedding modules.
+- **AI agents:** Koog 0.7.3 (JetBrains, Apache 2.0) — stateful agent graphs with tool support. Koog also provides RAG and embedding modules.
 - **LLM:** Gemini via Koog's `simpleGoogleAIExecutor`. Model: `GoogleModels.Gemini2_5Flash` (free tier). Claude/Anthropic is available via `simpleAnthropicExecutor` if needed later.
 - **Embedding model:** `gemini-embedding-001` (text-only, 3072 dimensions, 2048 token input). Upgrade path: `gemini-embedding-2-preview` (multimodal, 8192 token input) — but embedding spaces are incompatible, so switching requires re-embedding everything.
 - **Always specify task type when embedding:** `RETRIEVAL_DOCUMENT` for indexing, `CODE_RETRIEVAL_QUERY` for code queries, `SEMANTIC_SIMILARITY` for drift detection.
@@ -23,7 +23,7 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 ntivo/
 ├── build.gradle.kts              ← Root: all plugin versions (apply false)
 ├── settings.gradle.kts           ← Includes :shared, :server, :web
-├── gradle.properties             ← kotlin 2.3.0, ktor 3.4.0, compose 1.10.2
+├── gradle.properties             ← kotlin 2.3.20, ktor 3.4.2, compose 1.10.3
 ├── docker-compose.yml            ← Neo4j + Qdrant for local dev
 ├── shared/                       ← KMP module (jvm + wasmJs)
 │   ├── build.gradle.kts
@@ -33,14 +33,16 @@ ntivo/
 │   ├── build.gradle.kts          ← depends on :shared
 │   └── src/main/
 │       ├── kotlin/io/ntivo/
-│       │   ├── ApiRouting.kt     ← REST API: /api/chat, /api/embed, /api/store, /api/search, /api/parse
+│       │   ├── ApiRouting.kt     ← REST API: /api/agent-chat, /api/rag-pipeline, /api/chat, /api/embed, /api/store, /api/search, /api/parse
 │       │   ├── Application.kt    ← Ktor entry point, ContentNegotiation + CORS
+│       │   ├── CodebaseAgent.kt  ← Creates Koog agent with search_codebase tool (Phase 2 step 4)
+│       │   ├── CodeSearchTools.kt ← Koog ToolSet: searchCodebase tool for vector search over indexed code
 │       │   ├── EmbeddingDemo.kt  ← Gemini embedding + Qdrant demo (seeds 6 snippets)
 │       │   ├── GeminiEmbedder.kt ← Custom Embedder with taskType support
 │       │   ├── Routing.kt        ← GET /health
-│       │   ├── SimpleAgent.kt    ← Standalone Koog agent REPL
+│       │   ├── SimpleAgent.kt    ← Standalone Koog agent REPL (Phase 1)
 │       │   ├── StaticContent.kt  ← Serves Compose for Web production build
-│       │   └── TreeSitterDemo.kt ← Tree-sitter parser demo
+│       │   └── TreeSitterDemo.kt ← Tree-sitter parser demo + findFunctions/findClasses utilities
 │       └── resources/
 │           ├── application.yaml
 │           └── logback.xml
@@ -51,8 +53,8 @@ ntivo/
         │   ├── Main.kt           ← ComposeViewport entry point
         │   ├── App.kt            ← Root composable (theme + tabs + routing)
         │   ├── theme/NtivoTheme.kt
-        │   ├── components/       ← NtivoHeader, NtivoTabs, ResultPanel
-        │   ├── screens/          ← HealthScreen, ChatScreen, EmbedScreen, SearchScreen, ParseScreen
+        │   ├── components/       ← NtivoHeader, NtivoTabs (6 tabs), ResultPanel
+        │   ├── screens/          ← HealthScreen, RagPipelineScreen, ChatScreen, EmbedScreen, SearchScreen, ParseScreen
         │   └── api/NtivoApiClient.kt ← Ktor client using shared models
         └── resources/index.html  ← Minimal HTML host for Wasm canvas
 ```
@@ -143,15 +145,18 @@ docker compose ps                  # Check service status
 
 ## Current phase
 
-**Phase 1 — Getting comfortable with the stack.** ✅ COMPLETE. All 5 steps done:
+**Phase 1 — Getting comfortable with the stack.** ✅ COMPLETE.
 
-1. ~~Ktor project with GET /health~~ ✅
-2. ~~Koog agent talking to Gemini~~ ✅
-3. ~~Neo4j + Qdrant running locally via Docker Compose~~ ✅
-4. ~~First embedding with `gemini-embedding-001`~~ ✅
-5. ~~First Tree-sitter parse of a Kotlin file~~ ✅
+**Phase 2 — The First Working Loop.** 🔄 IN PROGRESS.
 
-**Bonus: Web Dev Console** — Compose for Web (Kotlin/Wasm) dev console with dark theme, 5 fully functional tabs (Health, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse). Served at `http://localhost:8080` via production build. API endpoints under `/api/` for all Phase 1 demos.
+1. ~~Parse a real Kotlin file with Tree-sitter~~ ✅ (RAG Pipeline screen)
+2. ~~Chunk and embed each function into Qdrant~~ ✅ (POST /api/rag-pipeline)
+3. ~~Write the search function~~ ✅ (POST /api/search + chat in RAG Pipeline)
+4. ~~Wire to a Koog agent with search_codebase tool~~ ✅ (CodebaseAgent + CodeSearchTools + POST /api/agent-chat)
+5. Ask a real question and validate — NEXT
+6. Validate on 5 real questions — measure retrieval precision
+
+**Web Dev Console** — 6 tabs: Health, RAG Pipeline, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse. RAG Pipeline is the primary Phase 2 screen with integrated chat.
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 

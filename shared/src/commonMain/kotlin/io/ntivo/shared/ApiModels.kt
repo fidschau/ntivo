@@ -73,6 +73,23 @@ data class PipelineStep(
     val durationMs: Long
 )
 
+// Agent Chat (with tool calls)
+@Serializable
+data class AgentChatRequest(val prompt: String, val collection: String = "chunks_demo")
+
+@Serializable
+data class AgentChatResponse(
+    val response: String,
+    val toolCalls: List<AgentToolCall> = emptyList()
+)
+
+@Serializable
+data class AgentToolCall(
+    val tool: String,
+    val args: String,
+    val result: String
+)
+
 // Error
 @Serializable
 data class ErrorResponse(val error: String)

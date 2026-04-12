@@ -25,7 +25,7 @@ Ask questions like:
 
 ## Status
 
-🟢 **Phase 1 complete.** All foundational pieces are in place: Ktor server, Koog AI agent with Gemini, Gemini embeddings with Qdrant vector storage, Tree-sitter code parsing, and a web dev console for visual testing.
+🟢 **Phase 2 in progress.** The RAG pipeline works end to end: paste Kotlin code, one click parses, chunks, embeds, and stores it. A Koog agent with a `search_codebase` tool can then answer plain English questions about the indexed code. Next: validation on real codebases, then cross-source linking with Jira.
 
 Follow along on the [blog](https://ntivo.hashnode.dev) for progress updates and technical write-ups.
 
@@ -97,7 +97,9 @@ The server starts at `http://localhost:8080` with a built-in web dev console for
 | Endpoint | Description | Requires |
 |---|---|---|
 | `GET /health` | Health check | Nothing |
-| `POST /api/chat` | Send a prompt to the Koog agent | `NTIVO_GEMINI_API_KEY` |
+| `POST /api/agent-chat` | Codebase agent with search tool (decides when to search) | `NTIVO_GEMINI_API_KEY` + Qdrant |
+| `POST /api/rag-pipeline` | Full pipeline: parse, chunk, embed, store | `NTIVO_GEMINI_API_KEY` + Qdrant |
+| `POST /api/chat` | Send a prompt to the Koog agent (no tools) | `NTIVO_GEMINI_API_KEY` |
 | `POST /api/embed` | Embed text with task type | `NTIVO_GEMINI_API_KEY` |
 | `POST /api/store` | Embed text and store in Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/search` | Vector search over Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
@@ -134,13 +136,13 @@ docker compose ps            # Check service status
 
 - [x] Stack foundation — Ktor, Koog agents, Gemini, Qdrant, Tree-sitter, Docker Compose
 - [x] Web dev console — visual testing for all features
-- [ ] Core ingestion — parse and embed a codebase, store in knowledge graph
-- [ ] Jira integration — link code to tickets and epics
+- [x] RAG pipeline — parse, chunk, embed, store in one click
+- [x] Codebase agent — Koog agent with search_codebase tool
+- [ ] Validation — test retrieval precision on real codebase
+- [ ] Jira integration — link code to tickets and epics (knowledge graph)
 - [ ] Confluence integration — connect specs and decisions to code
-- [ ] Natural language query agent
 - [ ] Datadog integration — automated incident enrichment
 - [ ] MCP server — expose Ntivo as a tool for Cursor, Claude, and other AI clients
-- [ ] Web UI — KMP/Compose for Web dashboard
 
 ---
 

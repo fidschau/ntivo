@@ -13,23 +13,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.ntivo.shared.PipelineStep
 import io.ntivo.shared.RagPipelineResponse
-import io.ntivo.shared.SearchResultItem
 import io.ntivo.web.api.NtivoApiClient
 import io.ntivo.web.components.ResultPanel
 import io.ntivo.web.components.ResultState
 import io.ntivo.web.theme.NtivoSuccess
 import kotlinx.coroutines.launch
-import kotlin.math.pow
-import kotlin.math.round
-
-private fun formatFloat(value: Float, decimals: Int): String {
-    val factor = 10.0.pow(decimals)
-    val rounded = round(value.toDouble() * factor) / factor
-    val str = rounded.toString()
-    val dotIndex = str.indexOf('.')
-    return if (dotIndex < 0) "$str.${"0".repeat(decimals)}"
-    else str.padEnd(dotIndex + 1 + decimals, '0').take(dotIndex + 1 + decimals)
-}
 
 private val SAMPLE_CODE = """class AuthService {
     fun authenticate(user: User): Boolean {
@@ -218,42 +206,21 @@ fun RagPipelineScreen(modifier: Modifier = Modifier) {
                         query = ""
                         scope.launch {
                             try {
-                                // Search Qdrant
-                                val searchResponse = NtivoApiClient.search(q, limit = 3)
-                                val results = searchResponse.results
+                                // Call the codebase agent — it decides whether to search
+                                val response = NtivoApiClient.agentChat(q)
 
-                                // Show tool call
-                                val toolMsg = ChatMessage(
-                                    "tool",
-                                    "search_codebase(\"$q\"): ${results.size} results" +
-                                        if (results.isNotEmpty()) " (top: ${formatFloat(results[0].score, 2)})" else "",
-                                    ChatMessageType.TOOL_CALL
-                                )
-                                chatMessages = chatMessages + toolMsg
-
-                                if (results.isEmpty()) {
+                                // Show tool calls if the agent made any
+                                for (tc in response.toolCalls) {
                                     chatMessages = chatMessages + ChatMessage(
-                                        "Ntivo",
-                                        "No matching code found. Try indexing more code first.",
-                                        ChatMessageType.AGENT
+                                        "tool",
+                                        "${tc.tool}(\"${tc.args}\"): ${tc.result}",
+                                        ChatMessageType.TOOL_CALL
                                     )
-                                    chatState = ResultState.Empty
-                                    return@launch
                                 }
-
-                                // Build context and ask agent
-                                val context = results.joinToString("\n\n") { r ->
-                                    val label = r.payload["label"] ?: "unknown"
-                                    val code = r.payload["text"] ?: ""
-                                    "Function: $label (similarity: ${formatFloat(r.score, 2)})\n$code"
-                                }
-
-                                val agentPrompt = "Based on these code search results, answer the question: \"$q\"\n\n$context"
-                                val agentResponse = NtivoApiClient.chat(agentPrompt)
 
                                 chatMessages = chatMessages + ChatMessage(
                                     "Ntivo",
-                                    agentResponse.response,
+                                    response.response,
                                     ChatMessageType.AGENT
                                 )
                                 chatState = ResultState.Empty
