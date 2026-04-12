@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -143,7 +144,36 @@ fun ParseScreen(modifier: Modifier = Modifier) {
         )
 
         if (parseResult != null) {
-            ParseResultView(parseResult!!)
+            val pr = parseResult!!
+            val resultText = buildString {
+                if (pr.classes.isNotEmpty()) {
+                    appendLine("Classes (${pr.classes.size}): ${pr.classes.joinToString(", ")}")
+                    appendLine()
+                }
+                if (pr.functions.isNotEmpty()) {
+                    appendLine("Functions (${pr.functions.size}):")
+                    appendLine(
+                        "Name".padEnd(20) + "Receiver".padEnd(14) +
+                        "Parameters".padEnd(24) + "Lines".padEnd(10) + "Size"
+                    )
+                    appendLine("─".repeat(80))
+                    pr.functions.forEach { fn ->
+                        appendLine(
+                            fn.name.padEnd(20) +
+                            (fn.receiver ?: "—").padEnd(14) +
+                            fn.parameters.padEnd(24) +
+                            "${fn.startLine}–${fn.endLine}".padEnd(10) +
+                            "${fn.bodyLength} chars"
+                        )
+                    }
+                }
+                if (pr.functions.isEmpty() && pr.classes.isEmpty()) {
+                    appendLine("No functions or classes found.")
+                }
+                appendLine()
+                append("AST: ${pr.nodeCount} top-level nodes")
+            }
+            ResultPanel(state = ResultState.Success(resultText), label = "")
         } else {
             ResultPanel(state = resultState, label = "")
         }
@@ -154,6 +184,7 @@ fun ParseScreen(modifier: Modifier = Modifier) {
 private fun ParseResultView(result: ParseResponse) {
     val shape = RoundedCornerShape(8.dp)
 
+    SelectionContainer {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -243,5 +274,6 @@ private fun ParseResultView(result: ParseResponse) {
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             fontSize = 12.sp
         )
+    }
     }
 }

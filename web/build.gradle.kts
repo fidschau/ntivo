@@ -20,7 +20,7 @@ kotlin {
                     port = 8081
                     proxy = mutableListOf(
                         KotlinWebpackConfig.DevServer.Proxy(
-                            mutableListOf("/api/*", "/health"),
+                            mutableListOf("/api", "/health"),
                             "http://localhost:8080"
                         )
                     )

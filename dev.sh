@@ -27,6 +27,26 @@ fi
 
 # ── Start Docker services ──
 if [ "$QUICK" = false ] && [ "$SERVER_ONLY" = false ]; then
+  # Ensure Docker Desktop is running (macOS)
+  if ! docker info >/dev/null 2>&1; then
+    echo "🐳 Docker Desktop not running — starting it..."
+    open -a "Docker Desktop"
+    printf "   Waiting for Docker to be ready"
+    for i in $(seq 1 60); do
+      if docker info >/dev/null 2>&1; then
+        echo " ✅"
+        break
+      fi
+      printf "."
+      sleep 2
+    done
+    if ! docker info >/dev/null 2>&1; then
+      echo ""
+      echo "❌ Docker Desktop didn't start within 2 minutes. Start it manually and retry."
+      exit 1
+    fi
+  fi
+
   echo "🐳 Starting Docker services (Neo4j + Qdrant)..."
   docker compose up -d
   echo ""

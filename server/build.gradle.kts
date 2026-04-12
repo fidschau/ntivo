@@ -34,7 +34,7 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:$logback_version")
 
     // Koog AI agent framework
-    implementation("ai.koog:koog-agents:0.6.4")
+    implementation("ai.koog:koog-agents:0.7.3")
 
     // Ktor HTTP client (for Gemini embedding REST API)
     implementation("io.ktor:ktor-client-core")
@@ -43,7 +43,7 @@ dependencies {
 
     // Qdrant vector database client (gRPC-based)
     implementation("io.qdrant:client:1.17.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.2")
 
     // Tree-sitter code parser (supports x86_64 + aarch64 on macOS/Linux/Windows)
     implementation("io.github.bonede:tree-sitter:0.24.4")

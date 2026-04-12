@@ -223,6 +223,152 @@ fun Application.configureApiRouting() {
                 }
             }
 
+            // POST /api/rag-pipeline — Full pipeline: parse → chunk → embed → store
+            post("/rag-pipeline") {
+                val request = call.receive<RagPipelineRequest>()
+                if (request.code.isBlank()) {
+                    return@post call.respond(HttpStatusCode.BadRequest,
+                        ErrorResponse("'code' is required and cannot be blank."))
+                }
+                val emb = embedder
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
+
+                val steps = mutableListOf<PipelineStep>()
+                val pipelineStart = System.currentTimeMillis()
+
+                // Step 1: Parse
+                val parseStart = System.currentTimeMillis()
+                val functions: List<FunctionChunk>
+                val classes: List<String>
+                try {
+                    val parser = TSParser()
+                    parser.setLanguage(TreeSitterKotlin())
+                    val tree = parser.parseString(null, request.code)
+                    val root = tree.rootNode
+
+                    val fnList = mutableListOf<FunctionChunk>()
+                    findFunctions(root, request.code, fnList)
+                    functions = fnList
+
+                    val classList = mutableListOf<String>()
+                    findClasses(root, request.code, classList)
+                    classes = classList
+
+                    steps.add(PipelineStep(
+                        stage = "parse",
+                        message = "Tree-sitter found ${classes.size} class(es), ${functions.size} function(s)",
+                        success = true,
+                        durationMs = System.currentTimeMillis() - parseStart
+                    ))
+                } catch (e: Exception) {
+                    steps.add(PipelineStep("parse", "Parse failed: ${e.message}", false,
+                        System.currentTimeMillis() - parseStart))
+                    return@post call.respond(RagPipelineResponse(steps, 0,
+                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                }
+
+                if (functions.isEmpty()) {
+                    steps.add(PipelineStep("chunk", "No functions found to index", false, 0))
+                    return@post call.respond(RagPipelineResponse(steps, 0,
+                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                }
+
+                // Step 2: Chunk
+                steps.add(PipelineStep(
+                    stage = "chunk",
+                    message = "Created ${functions.size} chunks (function-level)",
+                    success = true,
+                    durationMs = 0
+                ))
+
+                // Step 3 & 4: Embed + Store
+                val qdrant: QdrantClient
+                try {
+                    qdrant = QdrantClient(
+                        QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
+                    )
+                } catch (e: Exception) {
+                    steps.add(PipelineStep("store", "Cannot connect to Qdrant: ${e.message}", false, 0))
+                    return@post call.respond(RagPipelineResponse(steps, 0,
+                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                }
+
+                try {
+                    // Create collection if needed
+                    val collections = qdrant.listCollectionsAsync().await()
+                    if (!collections.contains(request.collection)) {
+                        qdrant.createCollectionAsync(
+                            request.collection,
+                            VectorParams.newBuilder()
+                                .setDistance(Distance.Cosine)
+                                .setSize(3072)
+                                .build()
+                        ).await()
+                    }
+
+                    var stored = 0
+                    for (fn in functions) {
+                        val embedStart = System.currentTimeMillis()
+                        val vector = emb.embed(fn.body, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
+                        val embedMs = System.currentTimeMillis() - embedStart
+
+                        steps.add(PipelineStep(
+                            stage = "embed",
+                            message = "${fn.name}: ${vector.dimension}-dim vector in ${embedMs}ms",
+                            success = true,
+                            durationMs = embedMs
+                        ))
+
+                        val floatValues = vector.values.map { it.toFloat() }
+                        val pointId = System.currentTimeMillis()
+
+                        qdrant.upsertAsync(
+                            request.collection,
+                            listOf(
+                                PointStruct.newBuilder()
+                                    .setId(id(pointId))
+                                    .setVectors(vectors(floatValues))
+                                    .putAllPayload(mapOf(
+                                        "text" to value(fn.body.take(2000)),
+                                        "label" to value(fn.name),
+                                        "source" to value("rag_pipeline"),
+                                        "receiver" to value(fn.receiver ?: ""),
+                                        "parameters" to value(fn.parameters),
+                                        "startLine" to value(fn.startLine.toLong()),
+                                        "endLine" to value(fn.endLine.toLong())
+                                    ))
+                                    .build()
+                            )
+                        ).await()
+
+                        stored++
+                        // Small delay to avoid duplicate millis IDs
+                        Thread.sleep(1)
+                    }
+
+                    steps.add(PipelineStep(
+                        stage = "store",
+                        message = "$stored/$stored chunks stored in ${request.collection} (cosine)",
+                        success = true,
+                        durationMs = 0
+                    ))
+
+                    val totalMs = System.currentTimeMillis() - pipelineStart
+                    call.respond(RagPipelineResponse(
+                        steps = steps,
+                        chunksIndexed = stored,
+                        totalTime = "${totalMs}ms"
+                    ))
+                } catch (e: Exception) {
+                    steps.add(PipelineStep("store", "Store error: ${e.message}", false, 0))
+                    call.respond(RagPipelineResponse(steps, 0,
+                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                } finally {
+                    qdrant.close()
+                }
+            }
+
             // POST /api/parse — Parse Kotlin code with tree-sitter
             post("/parse") {
                 val request = call.receive<ParseRequest>()

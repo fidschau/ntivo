@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ntivo-server",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": [":server:run"],
+      "port": 8080
+    },
+    {
+      "name": "ntivo-web",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": [":web:wasmJsBrowserDevelopmentRun"],
+      "port": 8081
+    }
+  ]
+}

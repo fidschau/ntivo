@@ -42,6 +42,7 @@ fun App() {
                     NtivoTab.HEALTH -> HealthScreen(
                         onHealthResult = { isHealthy = it }
                     )
+                    NtivoTab.RAG_PIPELINE -> RagPipelineScreen()
                     NtivoTab.CHAT -> ChatScreen()
                     NtivoTab.EMBED -> EmbedScreen()
                     NtivoTab.SEARCH -> SearchScreen()

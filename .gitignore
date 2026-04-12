@@ -40,4 +40,5 @@ out/
 kotlin-js-store/
 
 ### Claude Code ###
-.claude/
+.claude/.DS_Store
+assets/

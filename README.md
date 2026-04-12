@@ -27,7 +27,7 @@ Ask questions like:
 
 🟢 **Phase 1 complete.** All foundational pieces are in place: Ktor server, Koog AI agent with Gemini, Gemini embeddings with Qdrant vector storage, Tree-sitter code parsing, and a web dev console for visual testing.
 
-Follow along on [Substack](#) for progress updates and technical write-ups.
+Follow along on the [blog](https://ntivo.hashnode.dev) for progress updates and technical write-ups.
 
 ---
 
@@ -156,7 +156,7 @@ Docker Compose setup coming in an early release.
 ## Contributing
 
 Too early for contributions right now — the core isn't built yet. Watch the repo or
-follow along on Substack to know when it's ready for outside input.
+follow along on the [blog](https://ntivo.hashnode.dev) to know when it's ready for outside input.
 
 ---
 

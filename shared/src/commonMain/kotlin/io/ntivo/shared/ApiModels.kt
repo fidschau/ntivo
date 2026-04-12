@@ -54,6 +54,25 @@ data class ParsedFunction(
     val bodyLength: Int
 )
 
+// RAG Pipeline
+@Serializable
+data class RagPipelineRequest(val code: String, val collection: String = "chunks_demo")
+
+@Serializable
+data class RagPipelineResponse(
+    val steps: List<PipelineStep>,
+    val chunksIndexed: Int,
+    val totalTime: String
+)
+
+@Serializable
+data class PipelineStep(
+    val stage: String,
+    val message: String,
+    val success: Boolean,
+    val durationMs: Long
+)
+
 // Error
 @Serializable
 data class ErrorResponse(val error: String)

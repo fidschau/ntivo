@@ -57,4 +57,11 @@ object NtivoApiClient {
             setBody(ParseRequest(code = code))
         }.body()
     }
+
+    suspend fun ragPipeline(code: String, collection: String = "chunks_demo"): RagPipelineResponse {
+        return client.post("$BASE_URL/api/rag-pipeline") {
+            contentType(ContentType.Application.Json)
+            setBody(RagPipelineRequest(code = code, collection = collection))
+        }.body()
+    }
 }
