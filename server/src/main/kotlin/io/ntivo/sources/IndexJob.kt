@@ -286,19 +286,24 @@ fun toPieces(sourceId: String, sourceName: String, file: ParsedSourceFile): List
         )
     }
 
+/** Error shown in the embed stage when the server has no embedding model key. */
+const val MISSING_EMBEDDER = "NTIVO_GEMINI_API_KEY is not set. Export it and restart the server."
+
 /**
- * The index job the server runs, called once from `Application.module()`.
- * W1 wires the real piece indexer (QdrantPieceIndexer) here, so `Application.kt` never changes.
+ * The index job the server runs, called once from `Application.module()`: pieces go to
+ * the shared Qdrant collection, the graph to Neo4j. Without a model key, jobs fail in
+ * the embed stage with [MISSING_EMBEDDER].
  */
 fun createIndexJob(ctx: AppContext): IndexJob = IndexJob(
     ctx,
-    pieceIndexer = object : PieceIndexer {
-        override suspend fun index(
-            sourceId: String,
-            sourceName: String,
-            pieces: List<Piece>,
-            onProgress: (Int, Int) -> Unit
-        ): Int = throw NotImplementedError("Filled in by W1 (Task 6)")
-    },
+    pieceIndexer = ctx.embedder?.let { QdrantPieceIndexer(ctx.vectorStore, it, ctx.collection) }
+        ?: object : PieceIndexer {
+            override suspend fun index(
+                sourceId: String,
+                sourceName: String,
+                pieces: List<Piece>,
+                onProgress: (Int, Int) -> Unit
+            ): Int = throw IllegalStateException(MISSING_EMBEDDER)
+        },
     graphIndexer = ctx.codeGraph
 )
