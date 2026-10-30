@@ -1,6 +1,8 @@
 package io.ntivo.sources
 
 import ai.koog.embeddings.base.Vector
+import io.ntivo.EmbeddingRateLimited
+import io.ntivo.EmbeddingRequestFailed
 import io.ntivo.EmbeddingTaskType
 import io.ntivo.TaskTypeEmbedder
 import io.ntivo.VectorStore
@@ -14,6 +16,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** Integration test against the local Qdrant (gRPC :6334). Skipped when Qdrant is unreachable. */
@@ -22,14 +25,30 @@ class QdrantPieceIndexerTest {
     private val store = VectorStore()
     private val collection = "test_pieceindexer_${UUID.randomUUID().toString().take(8)}"
 
-    /** Four-dimensional vectors derived from the text, recording every call and task type. */
-    private class FakeEmbedder(private val failures: Int = 0) : TaskTypeEmbedder {
+    /**
+     * Four-dimensional vectors derived from the text, recording every embedAll call and task type.
+     * The first [failures] embedAll calls throw [failure] instead.
+     */
+    private class FakeEmbedder(
+        failures: Int = 0,
+        private val failure: () -> Exception = { EmbeddingRateLimited(retryAfterSeconds = null) }
+    ) : TaskTypeEmbedder {
         val calls = AtomicInteger()
+        val embedAllCalls = AtomicInteger()
+        val failedCalls = AtomicInteger()
         val taskTypes = mutableSetOf<EmbeddingTaskType>()
         private val failuresLeft = AtomicInteger(failures)
 
+        override suspend fun embedAll(texts: List<String>, taskType: EmbeddingTaskType): List<Vector> {
+            if (failuresLeft.getAndDecrement() > 0) {
+                failedCalls.incrementAndGet()
+                throw failure()
+            }
+            embedAllCalls.incrementAndGet()
+            return texts.map { embed(it, taskType) }
+        }
+
         override suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector {
-            if (failuresLeft.getAndDecrement() > 0) throw IllegalStateException("429 Too Many Requests")
             calls.incrementAndGet()
             synchronized(taskTypes) { taskTypes += taskType }
             val h = text.hashCode()
@@ -39,6 +58,10 @@ class QdrantPieceIndexerTest {
         override suspend fun embed(text: String): Vector = embed(text, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
         override fun diff(embedding1: Vector, embedding2: Vector): Double = 1.0 - embedding1.cosineSimilarity(embedding2)
     }
+
+    /** Records backoff waits instead of sleeping, so retry tests run instantly. */
+    private val sleeps = mutableListOf<Long>()
+    private val recordSleep: suspend (Long) -> Unit = { sleeps += it }
 
     private fun piece(sourceId: String, name: String, text: String, startLine: Int = 1) = Piece(
         id = UUID.nameUUIDFromBytes("$sourceId|Constants.kt|$name".toByteArray()).toString(),
@@ -104,26 +127,88 @@ class QdrantPieceIndexerTest {
     }
 
     @Test
-    fun `progress is reported once per batch of 16`(): Unit = runBlocking {
+    fun `three pieces are embedded in one embedAll call`(): Unit = runBlocking {
+        val embedder = FakeEmbedder()
+        assertEquals(3, QdrantPieceIndexer(store, embedder, collection).index("s1", "repo-s1", pieces) { _, _ -> })
+        assertEquals(1, embedder.embedAllCalls.get())
+    }
+
+    @Test
+    fun `progress is reported once per batch`(): Unit = runBlocking {
         val many = (1..40).map { piece("s3", "f$it", "fun f$it() = $it") }
         val progress = mutableListOf<Pair<Int, Int>>()
-        QdrantPieceIndexer(store, FakeEmbedder(), collection).index("s3", "repo-s3", many) { d, t -> progress += d to t }
+        val embedder = FakeEmbedder()
+        QdrantPieceIndexer(store, embedder, collection, batchSize = 16).index("s3", "repo-s3", many) { d, t -> progress += d to t }
         assertEquals(listOf(16 to 40, 32 to 40, 40 to 40), progress)
+        assertEquals(3, embedder.embedAllCalls.get())
     }
 
     @Test
-    fun `transient embedding failures are retried`(): Unit = runBlocking {
-        val embedder = FakeEmbedder(failures = 2)
-        val indexer = QdrantPieceIndexer(store, embedder, collection, retryDelayMs = 1)
+    fun `a rate limit with Retry-After waits that long and then succeeds`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1) { EmbeddingRateLimited(retryAfterSeconds = 7) }
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
+        assertEquals(3, indexer.index("s1", "repo-s1", pieces) { d, t -> progress += d to t })
+
+        assertEquals(listOf(7_000L), sleeps)
+        assertEquals(1, embedder.failedCalls.get())
+        assertEquals(1, embedder.embedAllCalls.get())
+        // The wait is reported as progress (nothing done yet) before the batch completes
+        assertEquals(listOf(0 to 3, 3 to 3), progress)
+    }
+
+    @Test
+    fun `a rate limit without a hint backs off exponentially from 2 s with jitter, capped at 60 s`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 7)
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
         assertEquals(3, indexer.index("s1", "repo-s1", pieces) { _, _ -> })
-        assertTrue(embedder.calls.get() >= 3)
+
+        assertEquals(7, sleeps.size)
+        val ceilings = listOf(2_000L, 4_000L, 8_000L, 16_000L, 32_000L, 60_000L, 60_000L)
+        sleeps.zip(ceilings).forEach { (slept, ceiling) ->
+            assertTrue(slept in ceiling / 2..ceiling, "slept $slept, expected between ${ceiling / 2} and $ceiling")
+        }
     }
 
     @Test
-    fun `persistent embedding failures give up with a clear error`(): Unit = runBlocking {
-        val indexer = QdrantPieceIndexer(store, FakeEmbedder(failures = 1_000), collection, maxAttempts = 3, retryDelayMs = 1)
-        val e = kotlin.test.assertFailsWith<IllegalStateException> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+    fun `a persistent rate limit gives up after 8 attempts and rethrows it`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1_000)
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
+        val e = assertFailsWith<EmbeddingRateLimited> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+
+        assertEquals(8, embedder.failedCalls.get())
+        assertEquals(7, sleeps.size)
+        assertTrue("after 8 attempts" in e.message!!, e.message)
+        assertTrue("100" in e.message!! && "per minute" in e.message!!, e.message)
+    }
+
+    @Test
+    fun `transient server errors are retried`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 2) { EmbeddingRequestFailed(503, "HTTP 503: unavailable") }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+        assertEquals(3, indexer.index("s1", "repo-s1", pieces) { _, _ -> })
+        assertEquals(2, sleeps.size)
+    }
+
+    @Test
+    fun `a client error such as a bad key fails at once`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1_000) { EmbeddingRequestFailed(400, "HTTP 400: API key not valid") }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+        val e = assertFailsWith<EmbeddingRequestFailed> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+        assertEquals(1, embedder.failedCalls.get())
+        assertTrue(sleeps.isEmpty())
+        assertTrue("API key not valid" in e.message!!)
+    }
+
+    @Test
+    fun `persistent other failures give up with a clear error`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1_000) { IllegalStateException("connection reset") }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, maxAttempts = 3, sleep = recordSleep)
+        val e = assertFailsWith<IllegalStateException> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
         assertTrue(e.message!!.startsWith("Could not capture meaning after 3 attempts"), e.message)
-        assertTrue("429 Too Many Requests" in e.message!!)
+        assertTrue("connection reset" in e.message!!)
     }
 }

@@ -1,27 +1,37 @@
 package io.ntivo.sources
 
+import io.ntivo.EmbeddingRateLimited
+import io.ntivo.EmbeddingRequestFailed
 import io.ntivo.EmbeddingTaskType
+import io.ntivo.GeminiEmbedder
 import io.ntivo.TaskTypeEmbedder
 import io.ntivo.VectorStore
 import io.ntivo.model.Piece
 import io.ntivo.payload
 import io.qdrant.client.ValueFactory.value
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.random.Random
 
 /**
  * Stage 3: embeds pieces as `RETRIEVAL_DOCUMENT` and stores them in the shared Qdrant
  * [collection], one point per piece (point id = piece id).
  *
  * Pieces are handled in batches of [batchSize]. For each batch the stored fingerprints are
- * read first and only new or changed pieces are embedded; the requests in a batch run in
- * parallel. Progress is reported once per batch over all pieces, embedded or skipped.
+ * read first and only new or changed pieces are embedded, in one [TaskTypeEmbedder.embedAll]
+ * call. Progress is reported once per batch over all pieces, embedded or skipped, and again
+ * (unchanged) before every backoff wait so the stage shows it is still alive.
+ *
+ * Failures are retried up to [maxAttempts] times:
+ * - [EmbeddingRateLimited] waits the `retryAfterSeconds` the API asked for, else backs off
+ *   exponentially with jitter from [baseDelayMs], capped at [maxRetryDelayMs]. When the
+ *   attempts run out it is rethrown (still an [EmbeddingRateLimited]) so the stage fails
+ *   with the rate-limit message.
+ * - [EmbeddingRequestFailed] with a 4xx status (bad key, bad request) is not retried.
+ * - Anything else (5xx, network) backs off the same way and ends in [IllegalStateException].
  *
  * The stored fingerprint covers the text and its location (path, lines, names), so a
  * function that only moved is written again and its citation lines stay right.
@@ -30,10 +40,12 @@ class QdrantPieceIndexer(
     private val store: VectorStore,
     private val embedder: TaskTypeEmbedder,
     private val collection: String,
-    private val batchSize: Int = 16,
+    private val batchSize: Int = GeminiEmbedder.MAX_BATCH,
     private val maxAttempts: Int = 8,
-    private val retryDelayMs: Long = 1_000,
-    private val maxRetryDelayMs: Long = 60_000
+    private val baseDelayMs: Long = 2_000,
+    private val maxRetryDelayMs: Long = 60_000,
+    private val random: Random = Random.Default,
+    private val sleep: suspend (Long) -> Unit = { delay(it) }
 ) : PieceIndexer {
 
     private val log = LoggerFactory.getLogger(QdrantPieceIndexer::class.java)
@@ -53,9 +65,7 @@ class QdrantPieceIndexer(
             val changed = batch.filter { stored[UUID.fromString(it.id)] != it.storedFingerprint() }
 
             if (changed.isNotEmpty()) {
-                val vectors = coroutineScope {
-                    changed.map { piece -> async { embedWithRetry(embeddingText(piece)) } }.awaitAll()
-                }
+                val vectors = embedWithRetry(sourceId, changed.map(::embeddingText)) { onProgress(processed, pieces.size) }
                 if (!collectionReady) {
                     store.ensureCollection(collection, dimensions = vectors.first().size.toLong())
                     collectionReady = true
@@ -77,29 +87,65 @@ class QdrantPieceIndexer(
     }
 
     /**
-     * Retries transient failures with exponential backoff capped at [maxRetryDelayMs]. With the
-     * defaults the last retry comes about two minutes after the first failure, long enough to
-     * outlast a per-minute quota (the Gemini free tier allows 100 embedding requests a minute).
+     * Embeds [texts] in one call, retrying as described on the class. [onWait] runs before
+     * every backoff wait. With the defaults the waits add up to about four minutes, long
+     * enough to outlast a per-minute quota (the Gemini free tier allows 100 a minute).
      */
-    private suspend fun embedWithRetry(text: String): List<Double> {
+    private suspend fun embedWithRetry(sourceId: String, texts: List<String>, onWait: () -> Unit): List<List<Double>> {
         var attempt = 0
         while (true) {
             try {
-                return embedder.embed(text, EmbeddingTaskType.RETRIEVAL_DOCUMENT).values
+                val vectors = embedder.embedAll(texts, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
+                check(vectors.size == texts.size) { "Embedder returned ${vectors.size} vectors for ${texts.size} texts" }
+                return vectors.map { it.values }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: EmbeddingRequestFailed) {
+                if (e.status != null && e.status in 400..499) throw e
+                attempt++
+                if (attempt >= maxAttempts) throw gaveUp(attempt, e)
+                wait(sourceId, attempt, backoffMs(attempt), e, onWait)
+            } catch (e: EmbeddingRateLimited) {
                 attempt++
                 if (attempt >= maxAttempts) {
-                    throw IllegalStateException(
-                        "Could not capture meaning after $attempt attempts. The model service may be " +
-                            "rate limiting this key or out of quota. Last error: ${e.message}",
+                    throw EmbeddingRateLimited(
+                        e.retryAfterSeconds,
+                        "Could not capture meaning after $attempt attempts. ${e.message}",
                         e
                     )
                 }
-                delay(minOf(retryDelayMs shl (attempt - 1), maxRetryDelayMs))
+                val waitMs = e.retryAfterSeconds?.let { minOf(it * 1_000L, maxRetryDelayMs) } ?: backoffMs(attempt)
+                wait(sourceId, attempt, waitMs, e, onWait)
+            } catch (e: Exception) {
+                attempt++
+                if (attempt >= maxAttempts) throw gaveUp(attempt, e)
+                wait(sourceId, attempt, backoffMs(attempt), e, onWait)
             }
         }
+    }
+
+    private suspend fun wait(sourceId: String, attempt: Int, waitMs: Long, cause: Exception, onWait: () -> Unit) {
+        log.warn(
+            "Source {}: embedding attempt {} of {} failed ({}); retrying in {} ms",
+            sourceId, attempt, maxAttempts, cause.message, waitMs
+        )
+        onWait()
+        sleep(waitMs)
+    }
+
+    private fun gaveUp(attempt: Int, e: Exception) = IllegalStateException(
+        "Could not capture meaning after $attempt attempts. The model service may be " +
+            "rate limiting this key or out of quota. Last error: ${e.message}",
+        e
+    )
+
+    /**
+     * Exponential backoff with jitter: the ceiling doubles from [baseDelayMs] per attempt up
+     * to [maxRetryDelayMs], and the wait is a random point in the upper half of it.
+     */
+    private fun backoffMs(attempt: Int): Long {
+        val ceiling = minOf(baseDelayMs shl (attempt - 1).coerceIn(0, 30), maxRetryDelayMs)
+        return ceiling / 2 + random.nextLong(ceiling / 2 + 1)
     }
 }
 
