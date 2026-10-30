@@ -89,6 +89,26 @@ class EvalScoringTest {
         assertEquals(1, factsHit(listOf("retrieval_document"), a))
     }
 
+    @Test
+    fun `a number fact does not hit inside a longer number`() {
+        assertEquals(0, factsHit(listOf("6"), answer(prose = "I could not find a tool limit; the answer budget is 60 seconds.")))
+        assertEquals(0, factsHit(listOf("4"), answer(evidence = listOf(EvidenceRow("ntivo", "See lines 14-18.")))))
+        assertEquals(0, factsHit(listOf("4"), answer(prose = "No policy was changed in 2024.")))
+    }
+
+    @Test
+    fun `a number fact hits when it stands on its own`() {
+        assertEquals(1, factsHit(listOf("6"), answer(prose = "The agent may make at most 6 tool calls.")))
+        assertEquals(1, factsHit(listOf("4"), answer(prose = "monthlyGuestPassLimit returns 4.")))
+    }
+
+    @Test
+    fun `a word fact hits its plural but not the middle of another word`() {
+        assertEquals(1, factsHit(listOf("symbolic link"), answer(prose = "Symbolic links are never followed.")))
+        assertEquals(1, factsHit(listOf("fingerprint"), answer(prose = "It compares stored fingerprints.")))
+        assertEquals(0, factsHit(listOf("name"), answer(prose = "It is resolved by the filename.")))
+    }
+
     // --- mustNotMention ---
 
     @Test

@@ -34,10 +34,27 @@ private fun answerText(answer: Answer): String = buildString {
     answer.evidence.forEach { appendLine("${it.label} ${it.text}") }
 }
 
-/** How many of [mustMention] the answer contains, ignoring case. */
+/**
+ * True when [text] states [phrase] as a token of its own, ignoring case: no letter or digit
+ * may touch it on either side, so "6" is not found in "60" and "4" not in "14-18" or "2024".
+ * With [allowWordSuffix], a phrase that ends in a letter may run on into a longer word, so
+ * "symbolic link" is found in "symbolic links". A phrase ending in a digit never may.
+ */
+internal fun mentions(text: String, phrase: String, allowWordSuffix: Boolean = false): Boolean {
+    if (phrase.isEmpty()) return false
+    val after = if (allowWordSuffix && phrase.last().isLetter()) "" else "(?![\\p{L}\\p{N}])"
+    return Regex("(?<![\\p{L}\\p{N}])${Regex.escape(phrase)}$after", RegexOption.IGNORE_CASE)
+        .containsMatchIn(text)
+}
+
+/**
+ * How many of [mustMention] the answer states, ignoring case. A fact must start a token and,
+ * when it ends in a digit, end one: "6" is found in "at most 6 tool calls" but not in
+ * "60 seconds". A fact ending in a letter also matches its plural or inflected form.
+ */
 fun factsHit(mustMention: List<String>, answer: Answer): Int {
     val text = answerText(answer)
-    return mustMention.count { text.contains(it, ignoreCase = true) }
+    return mustMention.count { mentions(text, it, allowWordSuffix = true) }
 }
 
 /**
@@ -46,10 +63,7 @@ fun factsHit(mustMention: List<String>, answer: Answer): Int {
  */
 fun forbiddenMentions(mustNotMention: List<String>, answer: Answer): List<String> {
     val text = answerText(answer)
-    return mustNotMention.filter { phrase ->
-        Regex("(?<![\\p{L}\\p{N}])${Regex.escape(phrase)}(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
-            .containsMatchIn(text)
-    }
+    return mustNotMention.filter { mentions(text, it) }
 }
 
 /** Share of facts hit (1 when none are required); 0 when the answer makes a forbidden claim. */
