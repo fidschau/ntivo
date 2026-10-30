@@ -118,4 +118,12 @@ class QdrantPieceIndexerTest {
         assertEquals(3, indexer.index("s1", "repo-s1", pieces) { _, _ -> })
         assertTrue(embedder.calls.get() >= 3)
     }
+
+    @Test
+    fun `persistent embedding failures give up with a clear error`(): Unit = runBlocking {
+        val indexer = QdrantPieceIndexer(store, FakeEmbedder(failures = 1_000), collection, maxAttempts = 3, retryDelayMs = 1)
+        val e = kotlin.test.assertFailsWith<IllegalStateException> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+        assertTrue(e.message!!.startsWith("Could not capture meaning after 3 attempts"), e.message)
+        assertTrue("429 Too Many Requests" in e.message!!)
+    }
 }

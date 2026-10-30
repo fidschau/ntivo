@@ -31,8 +31,9 @@ class QdrantPieceIndexer(
     private val embedder: TaskTypeEmbedder,
     private val collection: String,
     private val batchSize: Int = 16,
-    private val maxAttempts: Int = 5,
-    private val retryDelayMs: Long = 1_000
+    private val maxAttempts: Int = 8,
+    private val retryDelayMs: Long = 1_000,
+    private val maxRetryDelayMs: Long = 60_000
 ) : PieceIndexer {
 
     private val log = LoggerFactory.getLogger(QdrantPieceIndexer::class.java)
@@ -75,7 +76,11 @@ class QdrantPieceIndexer(
         return embedded
     }
 
-    /** Retries transient failures (rate limits, timeouts) with exponential backoff. */
+    /**
+     * Retries transient failures with exponential backoff capped at [maxRetryDelayMs]. With the
+     * defaults the last retry comes about two minutes after the first failure, long enough to
+     * outlast a per-minute quota (the Gemini free tier allows 100 embedding requests a minute).
+     */
     private suspend fun embedWithRetry(text: String): List<Double> {
         var attempt = 0
         while (true) {
@@ -86,9 +91,13 @@ class QdrantPieceIndexer(
             } catch (e: Exception) {
                 attempt++
                 if (attempt >= maxAttempts) {
-                    throw IllegalStateException("Could not capture meaning after $attempt attempts: ${e.message}", e)
+                    throw IllegalStateException(
+                        "Could not capture meaning after $attempt attempts. The model service may be " +
+                            "rate limiting this key or out of quota. Last error: ${e.message}",
+                        e
+                    )
                 }
-                delay(retryDelayMs shl (attempt - 1))
+                delay(minOf(retryDelayMs shl (attempt - 1), maxRetryDelayMs))
             }
         }
     }
