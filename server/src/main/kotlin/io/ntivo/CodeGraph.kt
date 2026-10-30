@@ -7,7 +7,7 @@ import io.ntivo.sources.GraphIndexer
 import io.ntivo.sources.GraphStats
 import io.ntivo.sources.ParsedSourceFile
 import io.ntivo.sources.nodeId
-import io.ntivo.sources.pieceId
+import io.ntivo.sources.pieceIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.neo4j.driver.AuthTokens
@@ -317,7 +317,9 @@ class CodeGraph(
         }
 
         val functionIds = mutableSetOf<String>()
-        for (fn in file.parsed.functions) {
+        // Same ids as toPieces, so repeated signatures in one file point at distinct pieces
+        val pieceIds = pieceIds(sourceId, path, file.parsed.functions)
+        for ((i, fn) in file.parsed.functions.withIndex()) {
             val qualifiedName = listOfNotNull(fn.container, fn.receiver, fn.name).joinToString(".")
             val id = nodeId(sourceId, "FUNCTION", path, "$qualifiedName:${fn.startLine}")
             if (!functionIds.add(id)) continue
@@ -325,7 +327,7 @@ class CodeGraph(
                 "id" to id, "name" to fn.name, "qualifiedName" to qualifiedName,
                 "receiver" to fn.receiver, "parameters" to fn.parameters, "calls" to fn.calls,
                 "startLine" to fn.startLine, "endLine" to fn.endLine,
-                "pieceId" to pieceId(sourceId, path, fn)
+                "pieceId" to pieceIds[i]
             )
             // A container the parser saw but did not emit as a class falls back to the file
             val parent = parentId(fn.container).takeIf { it == fileId || it in classIds } ?: fileId

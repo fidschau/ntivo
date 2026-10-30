@@ -268,12 +268,13 @@ private fun dedupe(pieces: List<Piece>): List<Piece> = pieces.distinctBy { it.id
 
 /**
  * One piece per function in [file]. Text is the function body with obvious secrets
- * redacted, capped at [MAX_PIECE_CHARS].
+ * redacted, capped at [MAX_PIECE_CHARS]. Functions sharing a signature in one file get
+ * distinct ids from [pieceIds], the same ids the graph stores on Function nodes.
  */
 fun toPieces(sourceId: String, sourceName: String, file: ParsedSourceFile): List<Piece> =
-    file.parsed.functions.map { fn ->
+    file.parsed.functions.zip(pieceIds(sourceId, file.path, file.parsed.functions)) { fn, id ->
         Piece(
-            id = pieceId(sourceId, file.path, fn),
+            id = id,
             sourceId = sourceId,
             sourceName = sourceName,
             language = file.language.displayName,

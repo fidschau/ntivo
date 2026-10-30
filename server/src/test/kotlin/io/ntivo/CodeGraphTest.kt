@@ -84,6 +84,38 @@ class CodeGraphTest {
     }
 
     @Test
+    fun `same-signature functions in one file get distinct piece ids matching the pieces`() = runBlocking {
+        val source = """
+            package demo
+
+            class Trees {
+                val first = object : Runnable {
+                    override fun run() { println("a") }
+                }
+                val second = object : Runnable {
+                    override fun run() { println("b") }
+                }
+            }
+        """.trimIndent()
+        val parsed = file("app/Trees.kt", source)
+        val runs = parsed.parsed.functions.filter { it.name == "run" }
+        assertEquals(2, runs.size)
+        // Precondition: the parser gives both the same signature, so the old id collided
+        assertEquals(pieceId(s1, "app/Trees.kt", runs[0]), pieceId(s1, "app/Trees.kt", runs[1]))
+
+        graph.rebuild(s1, "timber", listOf(parsed), { _, _ -> })
+        val nodes = graph.declarationsIn("app/Trees.kt", listOf(s1)).filter { it.name == "run" }
+        val pieces = io.ntivo.sources.toPieces(s1, "timber", parsed).filter { it.name == "run" }
+        assertEquals(2, nodes.size)
+        assertEquals(2, nodes.mapNotNull { it.pieceId }.toSet().size)
+        assertEquals(pieces.map { it.id }.toSet(), nodes.mapNotNull { it.pieceId }.toSet())
+        // Each node's piece is the one at the same location
+        for (node in nodes) {
+            assertEquals(pieces.single { it.id == node.pieceId }.startLine, node.startLine)
+        }
+    }
+
+    @Test
     fun `callers are scoped to the given sources and resolve within the source first`() {
         rebuildBoth()
         val callers = graph.callersOf("load", listOf(s1))
