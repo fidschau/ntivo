@@ -5,9 +5,8 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ntivo.agent.CodeSearchTools
-import io.ntivo.agent.TraceRecorder
-import io.ntivo.model.SourceState
+import io.ntivo.agent.AnswerService
+import io.ntivo.agent.AnswerStore
 import io.ntivo.shared.*
 import java.io.File
 
@@ -21,11 +20,14 @@ fun Application.configureApiRouting(ctx: AppContext) {
     val embedder = ctx.embedder
     val vectorStore = ctx.vectorStore
     val codeGraph = ctx.codeGraph
+    val answers = AnswerService(ctx)
 
     routing {
         route("/api") {
 
-            // POST /api/agent-chat — Codebase agent with search_codebase tool
+            // POST /api/agent-chat — Under the hood chat. Answers through the same service as
+            // /api/ask (all ready sources; the request's collection is ignored) and returns
+            // the prose plus the tool calls from the trace.
             post("/agent-chat") {
                 val request = call.receive<AgentChatRequest>()
                 if (request.prompt.isBlank()) {
@@ -36,18 +38,12 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
                 }
 
-                // Fresh tools + agent per request: the trace belongs to this run only
-                val trace = TraceRecorder()
-                val readyIds = ctx.sources.all().filter { it.state == SourceState.ready }.map { it.id }
-                val tools = CodeSearchTools(embedder, vectorStore, ctx.collection, readyIds, trace)
-                val agent = createCodebaseAgent(executor, tools)
                 try {
-                    val result = agent.run(request.prompt)
+                    val answer = answers.ask(request.prompt, null)
+                    val toolCalls = AnswerStore(ctx.tracesDir).trace(answer.id)?.toolCalls.orEmpty()
                     call.respond(AgentChatResponse(
-                        response = result,
-                        toolCalls = trace.toTrace("", "", emptyList(), "").toolCalls.map { tc ->
-                            AgentToolCall(tool = tc.tool, args = tc.args, result = tc.summary)
-                        }
+                        response = answer.prose,
+                        toolCalls = toolCalls.map { AgentToolCall(tool = it.tool, args = it.args, result = it.summary) }
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.BadGateway,
