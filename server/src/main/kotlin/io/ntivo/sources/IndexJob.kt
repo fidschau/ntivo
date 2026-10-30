@@ -57,12 +57,5 @@ fun createIndexJob(ctx: AppContext): IndexJob = IndexJob(
             onProgress: (Int, Int) -> Unit
         ): Int = throw NotImplementedError("Filled in by W1 (Task 6)")
     },
-    graphIndexer = object : GraphIndexer {
-        override suspend fun rebuild(
-            sourceId: String,
-            sourceName: String,
-            files: List<ParsedSourceFile>,
-            onProgress: (Int, Int) -> Unit
-        ): GraphStats = throw NotImplementedError("CodeGraph implements this in Task 7")
-    }
+    graphIndexer = ctx.codeGraph
 )
