@@ -42,7 +42,7 @@ class GitHubFetcher(url: String, private val branch: String?, private val token:
     ): FetchResult {
         val job = coroutineContext.job
         return withContext(Dispatchers.IO) {
-            if (into.exists()) into.deleteRecursively()
+            deleteWorkingCopy(into)
             into.parentFile?.mkdirs()
 
             val command = Git.cloneRepository()

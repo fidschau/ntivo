@@ -22,7 +22,7 @@ class UploadFetcher(private val name: String, private val parts: List<UploadedFi
         into: File,
         onProgress: (done: Int, total: Int, message: String) -> Unit
     ): FetchResult = withContext(Dispatchers.IO) {
-        if (into.exists()) into.deleteRecursively()
+        deleteWorkingCopy(into)
         into.mkdirs()
         val root = into.canonicalFile
         val total = parts.size

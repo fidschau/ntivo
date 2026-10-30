@@ -82,4 +82,47 @@ class FetcherTest {
         assertEquals(listOf("a/A.kt", "a/B.swift"), supportedFiles(root).map { it.relativeTo(root).path }.sorted())
         root.deleteRecursively()
     }
+    @Test
+    fun `supported files never follow symlinks out of the root`() {
+        val root = Files.createTempDirectory("walk").toFile()
+        val outside = Files.createTempDirectory("outside").toFile()
+        File(outside, "Secret.kt").writeText("fun secret() = 1")
+        File(outside, "nested").mkdirs()
+        File(outside, "nested/Other.swift").writeText("func other() {}")
+        File(root, "a").mkdirs()
+        File(root, "a/A.kt").writeText("")
+        Files.createSymbolicLink(File(root, "a/Evil.kt").toPath(), File(outside, "Secret.kt").toPath())
+        Files.createSymbolicLink(File(root, "a/link").toPath(), outside.toPath())
+
+        assertEquals(listOf("a/A.kt"), supportedFiles(root).map { it.relativeTo(root).path })
+
+        deleteWorkingCopy(root)
+        outside.deleteRecursively()
+    }
+
+    @Test
+    fun `deleting a working copy does not follow symlinks`() {
+        val victim = Files.createTempDirectory("victim").toFile()
+        val keep = File(victim, "keep.txt").apply { writeText("keep") }
+        val dir = Files.createTempDirectory("copy").toFile()
+        File(dir, "src").mkdirs()
+        File(dir, "src/A.kt").writeText("")
+        Files.createSymbolicLink(File(dir, "outside").toPath(), victim.toPath())
+        Files.createSymbolicLink(File(dir, "src/file-link").toPath(), keep.toPath())
+
+        deleteWorkingCopy(dir)
+
+        assertFalse(dir.exists())
+        assertTrue(keep.exists())
+        assertEquals("keep", keep.readText())
+        victim.deleteRecursively()
+    }
+
+    @Test
+    fun `deleting a missing working copy is a no-op`() {
+        val dir = File(Files.createTempDirectory("gone").toFile(), "missing")
+        deleteWorkingCopy(dir)
+        assertFalse(dir.exists())
+        dir.parentFile.delete()
+    }
 }

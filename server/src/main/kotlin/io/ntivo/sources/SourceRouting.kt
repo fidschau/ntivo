@@ -139,7 +139,7 @@ private suspend fun deleteSource(ctx: AppContext, indexJob: IndexJob, id: String
     withContext(Dispatchers.IO) {
         runCatching { if (ctx.codeGraph.isReachable()) ctx.codeGraph.deleteSource(id) }
             .onFailure { log.warn("Could not delete graph of source {}: {}", id, it.message) }
-        File(ctx.reposDir, id).deleteRecursively()
+        deleteWorkingCopy(File(ctx.reposDir, id))
     }
     ctx.sources.remove(id)
     log.info("Deleted source {}", id)
