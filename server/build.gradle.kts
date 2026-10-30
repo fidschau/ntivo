@@ -78,3 +78,15 @@ tasks.named("processResources") {
     dependsOn(copyWebDist)
 }
 
+// Eval: asks eval/questions.json to a running server (NTIVO_URL, default http://localhost:8080)
+// and writes data/eval-runs/{timestamp}.json. Spends model quota: one answer per question.
+//   ./gradlew :server:runEval -x :server:copyWebDist [-Pquestions=eval/questions.json]
+val runEval by tasks.registering(JavaExec::class) {
+    description = "Run the eval question set against a running Ntivo server"
+    group = "verification"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.ntivo.eval.EvalRunnerKt")
+    workingDir = rootProject.projectDir
+    args(providers.gradleProperty("questions").getOrElse("eval/questions.json"))
+}
+
