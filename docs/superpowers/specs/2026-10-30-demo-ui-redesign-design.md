@@ -1,6 +1,6 @@
 # Ntivo demo UI redesign
 
-Date: 2026-10-30. Status: reviewed, awaiting owner approval.
+Date: 2026-10-30. Status: implemented (wave 1). Wave 2 is not started: Ruby, TypeScript/JavaScript, zip upload, paste, LLM-graded eval and a GitHub App connection. The end-to-end run on the real SportCity repositories is the last open check for wave 1.
 
 ## Intent
 
