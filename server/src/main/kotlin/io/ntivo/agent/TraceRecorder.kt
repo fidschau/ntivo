@@ -105,7 +105,7 @@ class TraceRecorder(
 
     /** A piece returned by search, keeping its text so citations need no second lookup. */
     fun retrieved(piece: Piece, score: Float) {
-        retrieved(TracePiece(piece.id, piece.name, piece.sourceName, piece.language, score))
+        retrieved(TracePiece(piece.id, piece.qualifiedName, piece.sourceName, piece.language, score))
         synchronized(lock) { pieceTexts[piece.id] = piece }
     }
 

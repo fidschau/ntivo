@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────
 # Ntivo dev script — starts everything you need
-# Usage:  ./dev.sh          (full stack: Docker + server + Compose for Web)
+# Usage:  ./dev.sh          (full stack: Docker + server + developer console hot reload)
 #         ./dev.sh --quick  (server + web only, no Docker)
 #         ./dev.sh --server (server only)
 #         ./dev.sh --prod   (build web + run server — single process, no hot reload)
@@ -20,7 +20,7 @@ done
 
 # ── Check for API key ──
 if [ -z "${NTIVO_GEMINI_API_KEY:-}" ]; then
-  echo "⚠️  NTIVO_GEMINI_API_KEY not set — Chat, Embed, and Search will be disabled."
+  echo "NTIVO_GEMINI_API_KEY not set — indexing and answers will be disabled."
   echo "   Set it with: export NTIVO_GEMINI_API_KEY=\"your-key\""
   echo ""
 fi
@@ -29,12 +29,12 @@ fi
 if [ "$QUICK" = false ] && [ "$SERVER_ONLY" = false ]; then
   # Ensure Docker Desktop is running (macOS)
   if ! docker info >/dev/null 2>&1; then
-    echo "🐳 Docker Desktop not running — starting it..."
+    echo "Docker Desktop not running — starting it..."
     open -a Docker
     printf "   Waiting for Docker to be ready"
     for i in $(seq 1 60); do
       if docker info >/dev/null 2>&1; then
-        echo " ✅"
+        echo " ok"
         break
       fi
       printf "."
@@ -42,23 +42,24 @@ if [ "$QUICK" = false ] && [ "$SERVER_ONLY" = false ]; then
     done
     if ! docker info >/dev/null 2>&1; then
       echo ""
-      echo "❌ Docker Desktop didn't start within 2 minutes. Start it manually and retry."
+      echo "Docker Desktop didn't start within 2 minutes. Start it manually and retry."
       exit 1
     fi
   fi
 
-  echo "🐳 Starting Docker services (Neo4j + Qdrant)..."
+  echo "Starting Docker services (Neo4j + Qdrant)..."
   docker compose up -d
   echo ""
 fi
 
 # ── Production mode: build web + run server as single process ──
 if [ "$PROD" = true ]; then
-  echo "📦 Building Compose for Web production bundle..."
+  echo "Building the developer console bundle..."
   ./gradlew :server:processResources --quiet
   echo ""
-  echo "🚀 Starting Ntivo server (production mode)..."
-  echo "   Compose UI:  http://localhost:8080"
+  echo "Starting Ntivo server (production mode)..."
+  echo "   App:                 http://localhost:8080"
+  echo "   Developer console:   http://localhost:8080/under-the-hood/"
   echo "   Health:      http://localhost:8080/health"
   echo ""
   (sleep 4 && open http://localhost:8080 2>/dev/null || true) &
@@ -67,7 +68,7 @@ fi
 
 # ── Server only mode ──
 if [ "$SERVER_ONLY" = true ]; then
-  echo "🚀 Starting Ntivo server only..."
+  echo "Starting Ntivo server only..."
   echo "   Console: http://localhost:8080"
   echo "   Health:  http://localhost:8080/health"
   echo ""
@@ -79,14 +80,15 @@ fi
 for port in 8080 8081; do
   pid=$(lsof -ti:"$port" 2>/dev/null)
   if [ -n "$pid" ]; then
-    echo "⚠️  Killing stale process on port $port (PID $pid)"
+    echo "Killing stale process on port $port (PID $pid)"
     kill -9 $pid 2>/dev/null
   fi
 done
 
-# ── Full dev mode: server + Compose for Web ──
-echo "🚀 Starting Ntivo dev environment..."
-echo "   Compose UI:  http://localhost:8081  (Kotlin/Wasm, hot reload)"
+# ── Full dev mode: server + developer console (hot reload) ──
+echo "Starting Ntivo dev environment..."
+echo "   App:                 http://localhost:8080"
+echo "   Developer console:   http://localhost:8081  (hot reload)"
 echo "   Server API:  http://localhost:8080"
 echo "   Health:      http://localhost:8080/health"
 if [ "$QUICK" = false ]; then
@@ -96,7 +98,7 @@ fi
 echo ""
 
 # Full dev build so webpack has all artifacts + npm deps on clean builds
-echo "📦 Pre-building modules (first run may take a minute)..."
+echo "Pre-building modules (first run may take a minute)..."
 ./gradlew :shared:build :web:wasmJsBrowserDevelopmentWebpack --quiet 2>/dev/null
 echo ""
 
@@ -121,7 +123,7 @@ SERVER_PID=$!
 echo "⏳ Waiting for server on :8080..."
 for i in $(seq 1 30); do
   if curl -s http://localhost:8080/health >/dev/null 2>&1; then
-    echo "✅ Server is healthy"
+    echo "Server is healthy"
     break
   fi
   sleep 1
@@ -130,7 +132,7 @@ done
 ./gradlew :web:wasmJsBrowserDevelopmentRun &
 WEB_PID=$!
 
-# Open Compose UI once webpack is likely ready
+# Open the developer console once webpack is likely ready
 (sleep 20 && open http://localhost:8081 2>/dev/null || true) &
 
 # Wait for both — if either dies, cleanup runs via trap
