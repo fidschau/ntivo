@@ -186,6 +186,45 @@ class QdrantPieceIndexerTest {
     }
 
     @Test
+    fun `a Retry-After longer than five minutes fails at once`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1_000) { EmbeddingRateLimited(retryAfterSeconds = 48_957) }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
+        val e = assertFailsWith<EmbeddingRateLimited> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+
+        assertEquals(1, embedder.failedCalls.get())
+        assertEquals(0, embedder.embedAllCalls.get())
+        assertTrue(sleeps.isEmpty())
+        assertEquals(48_957, e.retryAfterSeconds)
+        assertTrue("quota" in e.message!!, e.message)
+        assertTrue("about 13.6 hours" in e.message!!, e.message)
+        assertTrue(e.cause is EmbeddingRateLimited, "original exception kept as the cause")
+    }
+
+    @Test
+    fun `a Retry-After of 299 seconds still retries as before`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1) { EmbeddingRateLimited(retryAfterSeconds = 299) }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
+        assertEquals(3, indexer.index("s1", "repo-s1", pieces) { _, _ -> })
+
+        assertEquals(listOf(60_000L), sleeps)
+        assertEquals(1, embedder.failedCalls.get())
+        assertEquals(1, embedder.embedAllCalls.get())
+    }
+
+    @Test
+    fun `a Retry-After of a few minutes is described in minutes`(): Unit = runBlocking {
+        val embedder = FakeEmbedder(failures = 1_000) { EmbeddingRateLimited(retryAfterSeconds = 301) }
+        val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)
+
+        val e = assertFailsWith<EmbeddingRateLimited> { indexer.index("s1", "repo-s1", pieces) { _, _ -> } }
+
+        assertTrue("about 5 minutes" in e.message!!, e.message)
+        assertTrue(sleeps.isEmpty())
+    }
+
+    @Test
     fun `transient server errors are retried`(): Unit = runBlocking {
         val embedder = FakeEmbedder(failures = 2) { EmbeddingRequestFailed(503, "HTTP 503: unavailable") }
         val indexer = QdrantPieceIndexer(store, embedder, collection, sleep = recordSleep)

@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.UUID
 import kotlin.random.Random
 
@@ -29,7 +30,8 @@ import kotlin.random.Random
  * - [EmbeddingRateLimited] waits the `retryAfterSeconds` the API asked for, else backs off
  *   exponentially with jitter from [baseDelayMs], capped at [maxRetryDelayMs]. When the
  *   attempts run out it is rethrown (still an [EmbeddingRateLimited]) so the stage fails
- *   with the rate-limit message.
+ *   with the rate-limit message. A hint longer than [MAX_RETRY_AFTER_SECONDS] means the
+ *   daily quota is spent, so it fails at once instead of waiting.
  * - [EmbeddingRequestFailed] with a 4xx status (bad key, bad request) is not retried.
  * - Anything else (5xx, network) backs off the same way and ends in [IllegalStateException].
  *
@@ -106,6 +108,7 @@ class QdrantPieceIndexer(
                 if (attempt >= maxAttempts) throw gaveUp(attempt, e)
                 wait(sourceId, attempt, backoffMs(attempt), e, onWait)
             } catch (e: EmbeddingRateLimited) {
+                if (e.retryAfterSeconds != null && e.retryAfterSeconds > MAX_RETRY_AFTER_SECONDS) throw quotaExhausted(e)
                 attempt++
                 if (attempt >= maxAttempts) {
                     throw EmbeddingRateLimited(
@@ -133,6 +136,13 @@ class QdrantPieceIndexer(
         sleep(waitMs)
     }
 
+    private fun quotaExhausted(e: EmbeddingRateLimited) = EmbeddingRateLimited(
+        e.retryAfterSeconds,
+        "The Gemini embedding quota is exhausted. The API asked to wait " +
+            "${humanDuration(e.retryAfterSeconds!!)}; retry indexing then.",
+        e
+    )
+
     private fun gaveUp(attempt: Int, e: Exception) = IllegalStateException(
         "Could not capture meaning after $attempt attempts. The model service may be " +
             "rate limiting this key or out of quota. Last error: ${e.message}",
@@ -146,6 +156,20 @@ class QdrantPieceIndexer(
     private fun backoffMs(attempt: Int): Long {
         val ceiling = minOf(baseDelayMs shl (attempt - 1).coerceIn(0, 30), maxRetryDelayMs)
         return ceiling / 2 + random.nextLong(ceiling / 2 + 1)
+    }
+
+    companion object {
+        /** A Retry-After above this (five minutes) means the daily quota is spent, not a per-minute limit. */
+        const val MAX_RETRY_AFTER_SECONDS = 300
+
+        /** "about 4 minutes" below an hour, else "about 13.6 hours". */
+        internal fun humanDuration(seconds: Int): String =
+            if (seconds < 3_600) {
+                val minutes = maxOf(1, Math.round(seconds / 60.0).toInt())
+                "about $minutes ${if (minutes == 1) "minute" else "minutes"}"
+            } else {
+                "about ${String.format(Locale.ROOT, "%.1f", seconds / 3_600.0)} hours"
+            }
     }
 }
 
