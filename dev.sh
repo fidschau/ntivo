@@ -108,7 +108,7 @@ WEB_PID=""
 # Clean up background processes on exit
 cleanup() {
   echo ""
-  echo "🛑 Shutting down..."
+  echo "Shutting down..."
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null
   [ -n "$WEB_PID" ] && kill "$WEB_PID" 2>/dev/null
   wait 2>/dev/null
