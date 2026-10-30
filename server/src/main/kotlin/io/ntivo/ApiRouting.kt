@@ -1,7 +1,5 @@
 package io.ntivo
 
-import ai.koog.prompt.executor.clients.google.GoogleLLMClient
-import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -14,18 +12,12 @@ private const val MISSING_KEY = "NTIVO_GEMINI_API_KEY not set. Export it and res
 
 // --- API routing ---
 
-fun Application.configureApiRouting() {
-    // Shared, long-lived clients. Gemini-backed ones are null if the API key is missing.
-    val apiKey: String? = System.getenv("NTIVO_GEMINI_API_KEY")
-    val executor = apiKey?.let { MultiLLMPromptExecutor(GoogleLLMClient(it)) }
-    val embedder: TaskTypeEmbedder? = apiKey?.let { GeminiEmbedder(it) }
-    val vectorStore = VectorStore()
-    val codeGraph = CodeGraph()
-
-    monitor.subscribe(ApplicationStopped) {
-        vectorStore.close()
-        codeGraph.close()
-    }
+fun Application.configureApiRouting(ctx: AppContext) {
+    // Shared, long-lived clients from the app context. Gemini-backed ones are null if the API key is missing.
+    val executor = ctx.executor
+    val embedder = ctx.embedder
+    val vectorStore = ctx.vectorStore
+    val codeGraph = ctx.codeGraph
 
     routing {
         route("/api") {

@@ -29,6 +29,7 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-cors")
+    implementation("io.ktor:ktor-server-sse")
 
     // Logging
     implementation("ch.qos.logback:logback-classic:$logback_version")
@@ -50,12 +51,17 @@ dependencies {
     // Tree-sitter code parser (supports x86_64 + aarch64 on macOS/Linux/Windows)
     implementation("io.github.bonede:tree-sitter:0.24.4")
     implementation("io.github.bonede:tree-sitter-kotlin:0.3.8.1")
+    implementation("io.github.bonede:tree-sitter-swift:0.5.0")
+
+    // Git clone of GitHub sources
+    implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
 
     // Neo4j graph database driver (Bolt protocol)
     implementation("org.neo4j.driver:neo4j-java-driver:6.3.0")
 
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
 // Copy the Compose for Web production build into server resources so a single
