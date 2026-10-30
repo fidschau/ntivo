@@ -4,8 +4,9 @@ Ntivo is the team's guru as a service. It reads your codebases once, then answer
 
 It is the one engineer who has read every repo, except it never leaves and anyone can ask it. Open source, Kotlin-native, self-hosted. Today it reads code. Tickets, docs and logs can join the same space later.
 
-<!-- Screenshot: add docs/demo.png after the end-to-end run on the real repositories. -->
-_Screenshot: coming with the first end-to-end run._
+![Ntivo answering the bring-a-friend question, shown with sample data](docs/images/demo-sample-data.jpg)
+
+_The screenshot uses the built-in sample data (`/?mock=1&scenario=1`). The same screens were exercised against real repositories (JakeWharton/timber and onevcat/Rainbow): a cross-repository question returned seven validated citations from Kotlin and Swift files._
 
 Ask things like:
 
@@ -95,7 +96,13 @@ The demo shows iOS and Android drift on the bring-a-friend friend limit, using t
 6. Open "How I answered" to see the closest pieces with similarity scores and the connections followed.
 7. Connect a third repository and ask again while it indexes. The answer names it under "could not see".
 
-Eval numbers (retrieval precision, citation validity) and the screenshot are added after the end-to-end run on the real repositories: _placeholder_.
+Eval baseline: not yet recorded. The first run hit the Gemini free-tier daily embedding quota before the Ntivo repository could be indexed. To record it, enable billing on the Gemini key (or wait for the quota to reset), connect this repository as a source, then run:
+
+```bash
+NTIVO_EVAL_DELAY_MS=10000 ./gradlew :server:runEval -x :server:copyWebDist
+```
+
+Paste the three aggregate numbers it prints here.
 
 ---
 
@@ -103,7 +110,7 @@ Eval numbers (retrieval precision, citation validity) and the screenshot are add
 
 ```bash
 ./gradlew :server:test -x :server:copyWebDist   # No API key needed; Qdrant and Neo4j tests skip when unreachable
-NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runEval
+NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runEval -x :server:copyWebDist   # Needs a running server with this repo connected
 ```
 
 `eval/questions.json` holds the question set with expected pieces and facts. The runner reports retrieval precision and citation validity and keeps each run under `data/eval-runs/`, so changes can be compared.
