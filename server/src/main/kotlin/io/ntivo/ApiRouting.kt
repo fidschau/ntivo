@@ -5,6 +5,9 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ntivo.agent.CodeSearchTools
+import io.ntivo.agent.TraceRecorder
+import io.ntivo.model.SourceState
 import io.ntivo.shared.*
 import java.io.File
 
@@ -33,15 +36,17 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
                 }
 
-                // Fresh tools + agent per request: the call log belongs to this run only
-                val tools = CodeSearchTools(embedder, vectorStore, request.collection)
+                // Fresh tools + agent per request: the trace belongs to this run only
+                val trace = TraceRecorder()
+                val readyIds = ctx.sources.all().filter { it.state == SourceState.ready }.map { it.id }
+                val tools = CodeSearchTools(embedder, vectorStore, ctx.collection, readyIds, trace)
                 val agent = createCodebaseAgent(executor, tools)
                 try {
                     val result = agent.run(request.prompt)
                     call.respond(AgentChatResponse(
                         response = result,
-                        toolCalls = tools.callLog.map { tc ->
-                            AgentToolCall(tool = tc.tool, args = tc.args, result = tc.resultSummary)
+                        toolCalls = trace.toTrace("", "", emptyList(), "").toolCalls.map { tc ->
+                            AgentToolCall(tool = tc.tool, args = tc.args, result = tc.summary)
                         }
                     ))
                 } catch (e: Exception) {

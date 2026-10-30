@@ -4,6 +4,7 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import ai.koog.prompt.executor.model.PromptExecutor
+import io.ntivo.agent.CodeSearchTools
 
 /**
  * Creates the Ntivo codebase agent — an AI agent with the [searchCodebase] tool.
