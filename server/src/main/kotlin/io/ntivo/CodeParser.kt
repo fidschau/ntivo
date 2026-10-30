@@ -13,9 +13,10 @@ fun parseKotlin(source: String): TSTree {
 }
 
 /** Source text addressed by Tree-sitter's offsets, which are UTF-8 bytes, not chars. */
-private class SourceBytes(source: String) {
+internal class SourceBytes(source: String) {
     private val bytes = source.toByteArray(Charsets.UTF_8)
-    fun text(node: TSNode) = String(bytes, node.startByte, node.endByte - node.startByte, Charsets.UTF_8)
+    fun text(node: TSNode) = slice(node.startByte, node.endByte)
+    fun slice(startByte: Int, endByte: Int) = String(bytes, startByte, endByte - startByte, Charsets.UTF_8)
 }
 
 /** A function extracted from source code, ready for embedding. */

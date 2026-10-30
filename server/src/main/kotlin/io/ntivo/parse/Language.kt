@@ -44,5 +44,5 @@ object KotlinParser : LanguageParser {
 /** The parser for [language]. */
 fun parserFor(language: Language): LanguageParser = when (language) {
     Language.KOTLIN -> KotlinParser
-    Language.SWIFT -> throw NotImplementedError("Swift parser is filled in by W1 (Task 3)")
+    Language.SWIFT -> SwiftParser
 }
