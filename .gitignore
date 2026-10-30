@@ -42,3 +42,5 @@ kotlin-js-store/
 ### Claude Code ###
 .claude/.DS_Store
 assets/
+.superpowers/
+data/
