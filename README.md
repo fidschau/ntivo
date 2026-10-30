@@ -1,155 +1,156 @@
 # Ntivo
 
-> Open-source, Kotlin-native codebase intelligence. Connects code, Jira, Confluence,
-> and Datadog into a knowledge graph — ask plain English questions about your systems
-> end to end.
+Ntivo is the team's guru as a service. It reads your codebases once, then answers questions about how the product actually works, across repositories, in plain English, with the exact code cited.
 
----
+It is the one engineer who has read every repo, except it never leaves and anyone can ask it. Open source, Kotlin-native, self-hosted. Today it reads code. Tickets, docs and logs can join the same space later.
 
-## What is Ntivo?
+<!-- Screenshot: add docs/demo.png after the end-to-end run on the real repositories. -->
+_Screenshot: coming with the first end-to-end run._
 
-Engineers waste hours every week tracing context across siloed tools. A Datadog alert
-fires — you manually find the relevant code, check Jira for history, guess at mobile
-impact. A new engineer joins — it takes months to understand how features work end to end.
+Ask things like:
 
-Ntivo connects the **why** (Jira, Confluence), the **what** (your code across every
-platform), and the **what's happening** (Datadog) into a single queryable knowledge graph.
+- *"Do iOS and Android enforce the same friend limit in bring-a-friend?"*
+- *"What happens when an invited friend already has an account?"*
+- *"Which functions call this one, and in which app?"*
 
-Ask questions like:
-- *"What's the difference between the iOS and Android implementation of biometric auth?"*
-- *"Which Jira ticket drove this change, and what was the reasoning?"*
-- *"Which mobile clients are affected if this backend endpoint changes?"*
-- *"Show me everything related to this Datadog alert — code, ticket, spec, blast radius."*
+Each answer takes a position, shows one evidence row per platform with the file and line range, and says what it could not see, such as a repository that is still being read.
 
 ---
 
 ## Status
 
-🟢 **Phase 2 in progress.** The RAG pipeline works end to end: paste Kotlin code, one click parses, chunks, embeds, and stores it. A Koog agent with a `search_codebase` tool can then answer plain English questions about the indexed code. Next: validation on real codebases, then cross-source linking with Jira.
+Wave 1 of the demo UI is done. You can connect a repository, watch it being read, ask a cross-repository question and see how the answer was produced. Kotlin and Swift are supported.
 
-Follow along on the [blog](https://ntivo.hashnode.dev) for progress updates and technical write-ups.
+Wave 2 is next: Ruby, TypeScript/JavaScript, zip upload, paste, an LLM-graded eval and a GitHub App connection. After that come Jira, Confluence and Datadog as sources.
 
----
-
-## Tech Stack
-
-| Component | Technology |
-|---|---|
-| Language | Kotlin (primary) |
-| Backend | Ktor |
-| AI Agents | [Koog](https://github.com/JetBrains/koog) (JetBrains OSS, Apache 2.0) |
-| Knowledge Graph | Neo4j |
-| Vector Store | Qdrant |
-| Code Parsing | Tree-sitter (JVM bindings) |
-| Embeddings | Gemini (`gemini-embedding-001`, upgrade path to multimodal `gemini-embedding-2-preview`) |
-| Web UI | Kotlin Multiplatform (Compose for Web / Kotlin/Wasm) |
-| Build | Gradle (Kotlin DSL) |
+Follow along on the [blog](https://ntivo.hashnode.dev).
 
 ---
 
-## Architecture
+## Run it
 
-```
-┌─────────────────────────────────────────────────┐
-│                   Ntivo API (Ktor)               │
-├────────┬────────┬───────────┬───────────────────┤
-│ Ingest │ Search │ Graph     │ Agent (Koog)      │
-│        │        │ Traversal │                   │
-├────────┴────────┴───────────┴───────────────────┤
-│   Neo4j (relationships)  │  Qdrant (embeddings) │
-└──────────────────────────┴──────────────────────┘
-
-Sources:  Git repos → Tree-sitter parsing → embeddings + graph nodes
-          Jira → ticket nodes + code↔ticket edges
-          Confluence → spec nodes + ticket↔spec edges
-          Datadog → alert nodes + alert↔code edges
-
-Clients:  Web UI (KMP/Compose for Web), MCP Server, REST API
-```
-
----
-
-## Running Locally
-
-### Prerequisites
-
-- JDK 21+
-- Docker Desktop (for Neo4j and Qdrant)
-- Gemini API key (free at [aistudio.google.com](https://aistudio.google.com)) for AI features
-
-### Quick Start
+You need JDK 21, Docker Desktop and a Gemini API key ([aistudio.google.com](https://aistudio.google.com)).
 
 ```bash
-# 1. Start infrastructure (Neo4j + Qdrant)
+# 1. Start Neo4j and Qdrant
 docker compose up -d
 
-# 2. Start the Ktor server
-./gradlew run
+# 2. Start the server (builds the developer console too)
+export NTIVO_GEMINI_API_KEY="your-key"
+./gradlew :server:run
 
-# 3. Open the web dev console
+# 3. Open the app
 open http://localhost:8080
 ```
 
-The server starts at `http://localhost:8080` with a built-in web dev console for testing all features visually.
+The app is static HTML, CSS and JavaScript served by Ktor, with no build step. Add `?mock=1` to the URL to try the interface with sample data and no server. The older developer console lives at `/under-the-hood/`.
 
-### API Endpoints
+For hot reload on the developer console, `./dev.sh` starts Docker, the server and the Compose dev server together.
 
-| Endpoint | Description | Requires |
+### Environment
+
+| Variable | Purpose | Default |
 |---|---|---|
-| `GET /health` | Health check | Nothing |
-| `POST /api/agent-chat` | Codebase agent with search tool (decides when to search) | `NTIVO_GEMINI_API_KEY` + Qdrant |
-| `POST /api/rag-pipeline` | Full pipeline: parse, chunk, embed, store | `NTIVO_GEMINI_API_KEY` + Qdrant |
-| `POST /api/search` | Vector search over Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
-| `POST /api/parse` | Parse Kotlin code with Tree-sitter | Nothing |
-| `POST /api/graph/index` | Parse a folder of Kotlin into a Neo4j code graph | Neo4j |
-
-### Tests
-
-```bash
-./gradlew :server:test   # Tree-sitter parser tests (no API key or Docker needed)
-```
-
-### Docker Services
-
-```bash
-docker compose up -d        # Start Neo4j + Qdrant (background)
-docker compose down          # Stop services (data preserved)
-docker compose down -v       # Stop + wipe all data (fresh start)
-docker compose ps            # Check service status
-```
-
-- **Neo4j Browser:** http://localhost:7474 (user: `neo4j`, password: `ntivo_dev_password`)
-- **Qdrant Dashboard:** http://localhost:6333/dashboard
+| `NTIVO_GEMINI_API_KEY` | Chat model and embeddings | none, required for indexing and answers |
+| `NTIVO_NEO4J_URI` | Neo4j Bolt address | `bolt://localhost:7687` |
+| `NTIVO_NEO4J_PASSWORD` | Neo4j password | `ntivo_dev_password` |
+| `NTIVO_QDRANT_HOST` | Qdrant host (gRPC port 6334) | `localhost` |
+| `NTIVO_DATA_DIR` | Where sources, working copies and traces live | `data/` at the repo root |
 
 ---
 
-## Roadmap (high level)
+## Connect a repository
 
-- [x] Stack foundation — Ktor, Koog agents, Gemini, Qdrant, Tree-sitter, Docker Compose
-- [x] Web dev console — visual testing for all features
-- [x] RAG pipeline — parse, chunk, embed, store in one click
-- [x] Codebase agent — Koog agent with search_codebase tool
-- [ ] Validation — test retrieval precision on real codebase
-- [ ] Jira integration — link code to tickets and epics (knowledge graph)
-- [ ] Confluence integration — connect specs and decisions to code
-- [ ] Datadog integration — automated incident enrichment
-- [ ] MCP server — expose Ntivo as a tool for Cursor, Claude, and other AI clients
+Choose "Connect a repository" in the left column. Two ways work today:
+
+1. **GitHub URL.** Paste the repository URL, optionally a branch, and a personal access token for a private repository. Ntivo makes a shallow clone.
+2. **Upload a folder.** Pick a local folder. The dialog shows the file count and total size before you connect, so you can decide whether a whole codebase or one module fits.
+
+Either way a card appears in the chat and walks through four steps:
+
+1. Fetch the files.
+2. Split them into pieces, one per function or method, so answers point at the exact code.
+3. Capture meaning, so you can search by what code does instead of what it is called.
+4. Map connections: who calls what, so answers can follow the trail.
+
+Indexing time is shown per step. Capturing meaning dominates; a large mobile repository takes a while on the Gemini free tier, which allows about 100 embedding requests per minute. Connect a module first if you are short on time. A repository with no Kotlin or Swift files ends in a failed state with "No Kotlin or Swift files found".
+
+---
+
+## Guardrails
+
+The agent is non-deterministic and reads untrusted text, so the limits are part of the build. Every answer is structured, and the server drops any citation to code the agent did not actually retrieve. Search results below a 0.60 similarity score never reach the model. A question gets at most 6 tool calls, graph queries stop at 3 hops and 50 results, and the whole question has a 60 second budget. Temperature is 0.2 and the model is pinned in code. Tools are read-only. Repository code reaches the model inside delimited data blocks and is treated as data, never as instructions, and obvious secrets are redacted before anything is stored. A GitHub token you enter stays in server memory and is never logged or written to disk. Sources that are still indexing or failed are listed as "could not see" in the answer, from server state rather than the model's memory. Every question keeps a trace, shown under "How I answered".
+
+---
+
+## Demo scenario
+
+The demo shows iOS and Android drift on the bring-a-friend friend limit, using two real repositories.
+
+1. Connect the Android repository, by GitHub URL with a token or as a local folder.
+2. Connect the iOS repository the other way, so both connect methods are on show.
+3. Watch both cards finish their four steps.
+4. Ask: *Do iOS and Android enforce the same friend limit in bring-a-friend?*
+5. Read the verdict, the evidence row per platform and the cited files. Click a citation to open the code with the cited lines highlighted.
+6. Open "How I answered" to see the closest pieces with similarity scores and the connections followed.
+7. Connect a third repository and ask again while it indexes. The answer names it under "could not see".
+
+Eval numbers (retrieval precision, citation validity) and the screenshot are added after the end-to-end run on the real repositories: _placeholder_.
+
+---
+
+## Tests and eval
+
+```bash
+./gradlew :server:test -x :server:copyWebDist   # No API key needed; Qdrant and Neo4j tests skip when unreachable
+NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runEval
+```
+
+`eval/questions.json` holds the question set with expected pieces and facts. The runner reports retrieval precision and citation validity and keeps each run under `data/eval-runs/`, so changes can be compared.
+
+---
+
+## Tech stack
+
+| Component | Technology |
+|---|---|
+| Language | Kotlin |
+| Backend | Ktor |
+| AI agents | [Koog](https://github.com/JetBrains/koog) (JetBrains, Apache 2.0) |
+| Chat model | Gemini 2.5 Flash |
+| Code graph | Neo4j |
+| Vector store | Qdrant |
+| Code parsing | Tree-sitter (JVM bindings), Kotlin and Swift |
+| Embeddings | Gemini `gemini-embedding-001`, behind an interface so Ollama or Voyage can replace it |
+| App | Static HTML, CSS and JS, no framework |
+| Developer console | Compose for Web (Kotlin/Wasm) at `/under-the-hood/` |
+| Build | Gradle (Kotlin DSL), JDK 21 |
+
+---
+
+## Roadmap
+
+- [x] Stack foundation: Ktor, Koog, Gemini, Qdrant, Neo4j, Tree-sitter
+- [x] Connect a repository by GitHub URL or folder upload, with live four-step indexing
+- [x] Kotlin and Swift parsing, code graph with confidence on every edge
+- [x] Grounded answers with validated citations, a trace and guardrails
+- [ ] Ruby and TypeScript/JavaScript, zip upload, paste
+- [ ] LLM-graded eval
+- [ ] GitHub App connection
+- [ ] Jira, Confluence and Datadog as sources
+- [ ] MCP server for Cursor, Claude and other AI clients
 
 ---
 
 ## Self-hosting
 
-Self-hosted from day one. BYOK (bring your own LLM key). No data leaves your
-infrastructure unless you configure a cloud embedding provider — and that's your call.
-
-Docker Compose setup coming in an early release.
+Self-hosted from day one. Bring your own model key. No data leaves your machine except the text sent to the model and embedding provider you configure. Use the paid Gemini tier if you do not want repository text used for training. Local-only for now: no auth, so do not expose it publicly.
 
 ---
 
 ## Contributing
 
-Too early for contributions right now — the core isn't built yet. Watch the repo or
-follow along on the [blog](https://ntivo.hashnode.dev) to know when it's ready for outside input.
+Too early for outside contributions. Watch the repo or follow the [blog](https://ntivo.hashnode.dev) to know when it is ready.
 
 ---
 
