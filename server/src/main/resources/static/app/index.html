@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ntivo</title>
+  <meta name="description" content="Ask how your product works, answered from your code.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f2328'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='17' font-weight='700' fill='white' text-anchor='middle'%3En%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./" aria-label="Ntivo home"><span class="mark" aria-hidden="true">n</span>Ntivo</a>
+    <div class="crumb"><b>SportCity</b><span id="crumb-chat"></span></div>
+    <span id="mock-badge" class="lbl soon" title="Running on sample data, not the server" hidden>Sample data</span>
+    <div class="right">
+      <a class="btn ghost" href="/under-the-hood/" target="_blank" rel="noopener">Under the hood</a>
+      <button class="btn" id="new-chat" type="button">New chat</button>
+      <div class="avatar" aria-hidden="true"></div>
+    </div>
+  </header>
+
+  <main class="app" id="app">
+    <nav class="side" id="sources" aria-label="Sources"></nav>
+    <section class="chat" id="chat" aria-label="Chat"></section>
+    <aside class="aside" id="trace" aria-label="How it answered"></aside>
+    <div class="drawer" id="drawer" hidden></div>
+  </main>
+
+  <dialog class="dialog" id="connect"></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <noscript><p class="noscript">Ntivo needs JavaScript to run.</p></noscript>
+</body>
+</html>
