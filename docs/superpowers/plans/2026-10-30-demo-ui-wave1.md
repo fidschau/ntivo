@@ -94,10 +94,12 @@ Model output schema (what the agent must return as its final message, parsed in 
 
 Tasks are grouped so a workstream can run as one agent. Dependencies are listed; anything not listed can run in parallel.
 
-- **W0 Foundation** (Tasks 1-2): models, stores, routing skeleton. Everything depends on this.
-- **W1 Ingestion** (Tasks 3-8): Swift parser, fetchers, job runner, per-source indexing, SSE, endpoints. Depends on W0.
-- **W2 Agent** (Tasks 9-11): graph tools, guarded agent, structured answers, trace, `/api/ask`. Depends on W0; needs Task 6 and 7 only at integration time (uses their interfaces).
-- **W3 Frontend** (Tasks 12): static app against the contract above with a mock mode. Depends on W0 for the contract only.
+- **W0 Foundation** (Tasks 1, 2, 6, 7): models, stores, event bus, app context, source-aware VectorStore and CodeGraph APIs, routing stubs. One agent, sequential. Everything depends on this.
+- **W1 Ingestion** (Tasks 3, 4, 5, 8): Swift parser, fetchers, job runner, Qdrant piece indexer, source endpoints. Depends on W0. Owns: `parse/`, `sources/` (except `Models.kt`, `Ids.kt`, `SourceStore.kt`), `CodeParser.kt`.
+- **W2 Agent** (Tasks 9, 10, 11): graph tools, guarded agent, structured answers, trace, `/api/ask`. Depends on W0. Owns: `agent/`, `CodeSearchTools.kt`, `CodebaseAgent.kt`, `ApiRouting.kt`.
+- **W3 Frontend** (Task 12): static app against the contract above with a mock mode. Depends on W0 for the contract only. Owns: `resources/static/app/`, `StaticContent.kt`.
+
+File ownership is strict: a workstream edits only the files it owns. W1, W2 and W3 run in separate worktrees and are merged by the orchestrator; W0 must land first and must leave `Application.kt` calling `configureSourceRouting(ctx, indexJob)` and `configureAskRouting(ctx)` as empty stub functions in `sources/SourceRouting.kt` and `agent/AskRouting.kt`, so that W1 and W2 fill in those files without touching `Application.kt`. W0 also adds every Gradle dependency listed in Task 2 so no parallel workstream edits `server/build.gradle.kts`.
 - **W4 Eval** (Task 13): question set and runner. Depends on W2.
 - **W5 Finish** (Tasks 14-15): routes, CLAUDE.md, README, end-to-end check on the real repositories.
 
@@ -228,27 +230,29 @@ Use `Json { prettyPrint = true; ignoreUnknownKeys = true }`. Create parent dirs 
 
 ---
 
-### Task 6: Source-aware vector indexing
+### Task 6: Source-aware vector store (W0) and piece indexer (W1)
 
 **Files:**
-- Modify: `server/src/main/kotlin/io/ntivo/VectorStore.kt`
-- Create: `server/src/main/kotlin/io/ntivo/sources/QdrantPieceIndexer.kt`
-- Test: `server/src/test/kotlin/io/ntivo/sources/QdrantPieceIndexerTest.kt` (skips when Qdrant is unreachable: catch and `assumeTrue(false)`)
+- Modify (W0): `server/src/main/kotlin/io/ntivo/VectorStore.kt`
+- Create (W1): `server/src/main/kotlin/io/ntivo/sources/QdrantPieceIndexer.kt`
+- Test (W0): `server/src/test/kotlin/io/ntivo/VectorStoreTest.kt` (skips when Qdrant is unreachable: catch and `assumeTrue(false)`)
+- Test (W1): `server/src/test/kotlin/io/ntivo/sources/QdrantPieceIndexerTest.kt` (same skip rule)
 
 **Interfaces:**
 - Consumes: `PieceIndexer`, `Piece`, `TaskTypeEmbedder`, `VectorStore`.
-- Produces: `VectorStore.upsertBatch(collection, points: List<Pair<UUID, Pair<List<Double>, Map<String, Value>>>>)`, `VectorStore.deleteBySource(collection, sourceId)` (filter on payload `sourceId`), `VectorStore.search(collection, vector, limit, sourceIds: List<String>? = null, minScore: Float = 0f)` adding a `should`/`must` filter on `sourceId` and `score_threshold`.
+- Produces (W0): `VectorStore.upsertBatch(collection, points: List<Pair<UUID, Pair<List<Double>, Map<String, Value>>>>)`, `VectorStore.deleteBySource(collection, sourceId)` (filter on payload `sourceId`), `VectorStore.search(collection, vector, limit, sourceIds: List<String>? = null, minScore: Float = 0f)` adding a `should`/`must` filter on `sourceId` and `score_threshold`, `VectorStore.getPiece(collection, pieceId: String): Piece?` (retrieve by point id, build `Piece` from payload), and `fun Piece.payload(): Map<String, Value>` plus `fun pieceFromPayload(map): Piece`.
 - Produces: payload keys for every point: `pieceId, sourceId, sourceName, language, path, name, qualifiedName, startLine, endLine, text, fingerprint`. Point UUID = `UUID.fromString(piece.id)`.
 - Produces: `class QdrantPieceIndexer(store, embedder) : PieceIndexer` that embeds in batches of 16 with `EmbeddingTaskType.RETRIEVAL_DOCUMENT`, skips unchanged fingerprints, reports progress per batch, returns the number embedded.
-- Modify `CodeSearchTools.searchCodebase` to pass `minScore = 0.60f` and the ready source ids, and to include `pieceId`, `sourceName`, `path` in its text output (one header line per result: `[pieceId] sourceName path:startLine-endLine name`).
+- The `CodeSearchTools` changes (threshold, source filter, `[pieceId]` header lines) belong to W2, Task 9.
 
-- [ ] **Step 1: Failing test** (integration, skipped without Qdrant): index 3 pieces from two sources with the same path; `search` with `sourceIds = [s1]` returns only s1; `deleteBySource(s2)` removes exactly s2's points; re-index of unchanged pieces embeds 0.
+- [ ] **Step 1 (W0): Failing test** (integration, skipped without Qdrant): upsert 3 pieces from two sources with the same path; `search` with `sourceIds = [s1]` returns only s1; `deleteBySource(s2)` removes exactly s2's points; `getPiece` round-trips a payload.
+- [ ] **Step 1 (W1): Failing test** (integration, skipped without Qdrant): index 3 pieces with a fake embedder; re-index of unchanged pieces embeds 0 and reports progress once per batch.
 - [ ] **Step 2-4: Run, implement, pass.**
 - [ ] **Step 5: Commit** `feat: source-tagged pieces in Qdrant with filtered search`
 
 ---
 
-### Task 7: Source-aware graph indexing and graph queries
+### Task 7: Source-aware graph indexing and graph queries (W0)
 
 **Files:**
 - Modify: `server/src/main/kotlin/io/ntivo/CodeGraph.kt`
@@ -294,7 +298,7 @@ Use `Json { prettyPrint = true; ignoreUnknownKeys = true }`. Create parent dirs 
 **Files:**
 - Create: `server/src/main/kotlin/io/ntivo/agent/TraceRecorder.kt`
 - Create: `server/src/main/kotlin/io/ntivo/agent/GraphTools.kt`
-- Modify: `server/src/main/kotlin/io/ntivo/CodeSearchTools.kt` (move to `io.ntivo.agent`, use `TraceRecorder`, apply threshold and source filter)
+- Modify: `server/src/main/kotlin/io/ntivo/CodeSearchTools.kt` (move to `io.ntivo.agent`; new constructor `CodeSearchTools(embedder, store, collection, sourceIds: List<String>, trace: TraceRecorder)`; call `store.search(..., sourceIds, minScore = 0.60f)`; return one header line per result `[pieceId] sourceName path:startLine-endLine name` followed by `wrapPiece(piece)`; record each result with `trace.retrieved`)
 - Create: `server/src/main/kotlin/io/ntivo/agent/Prompts.kt`
 - Test: `server/src/test/kotlin/io/ntivo/agent/ToolLimitsTest.kt`, `server/src/test/kotlin/io/ntivo/agent/PromptsTest.kt`
 
@@ -344,7 +348,7 @@ Use `Json { prettyPrint = true; ignoreUnknownKeys = true }`. Create parent dirs 
 - Test: `server/src/test/kotlin/io/ntivo/agent/AskRoutingTest.kt`
 
 **Interfaces:**
-- Produces: `POST /api/ask` body `@Serializable data class AskRequest(val question: String, val sourceIds: List<String>? = null)` → `Answer`; 400 on blank; 503 when no model key. `GET /api/answers/{id}/trace` → `Trace` from `data/traces`, 404 if missing. `GET /api/pieces/{id}` → `Piece` read from Qdrant by point id (`VectorStore.getPiece(collection, id)`), 404 if missing.
+- Produces: `POST /api/ask` body `@Serializable data class AskRequest(val question: String, val sourceIds: List<String>? = null)` → `Answer`; 400 on blank; 503 when no model key. `GET /api/answers/{id}/trace` → `Trace` from `data/traces`, 404 if missing. `GET /api/pieces/{id}` → `Piece` via `VectorStore.getPiece(collection, id)` (Task 6), 404 if missing.
 
 - [ ] **Step 1: Failing tests** with `testApplication` and a stubbed `AnswerService`: blank → 400; trace 404; trace 200 after writing a file.
 - [ ] **Step 2-4: Run, implement, pass.**
