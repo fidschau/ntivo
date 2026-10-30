@@ -3,7 +3,7 @@ package io.ntivo
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.prompt.executor.clients.google.GoogleModels
-import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.executor.model.PromptExecutor
 
 /**
  * Creates the Ntivo codebase agent — an AI agent with the [searchCodebase] tool.
@@ -13,17 +13,15 @@ import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
  * authentication work?", the agent calls searchCodebase. When they ask "what is
  * Kotlin?", it answers directly.
  *
- * This is the Phase 2 step 4 milestone: the shift from script to agent.
+ * Create one agent per request, each with its own [CodeSearchTools], so concurrent
+ * requests don't share agent state or tool-call logs. The [executor] can be shared.
  */
 fun createCodebaseAgent(
-    apiKey: String,
-    embedder: GeminiEmbedder,
-    collection: String = "chunks_demo"
+    executor: PromptExecutor,
+    searchTools: CodeSearchTools
 ): AIAgent<String, String> {
-    val searchTools = CodeSearchTools(embedder, collection)
-
     return AIAgent(
-        promptExecutor = simpleGoogleAIExecutor(apiKey),
+        promptExecutor = executor,
         llmModel = GoogleModels.Gemini2_5Flash,
         systemPrompt = """
             You are Ntivo, a codebase assistant. You help engineers understand their code.

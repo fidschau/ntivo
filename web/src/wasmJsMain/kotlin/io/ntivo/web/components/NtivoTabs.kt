@@ -10,10 +10,9 @@ import androidx.compose.ui.unit.dp
 enum class NtivoTab(val title: String) {
     HEALTH("Health"),
     RAG_PIPELINE("RAG Pipeline"),
-    CHAT("Agent Chat"),
-    EMBED("Embed + Store"),
     SEARCH("Vector Search"),
-    PARSE("Tree-sitter Parse")
+    PARSE("Tree-sitter Parse"),
+    GRAPH("Code Graph")
 }
 
 @Composable

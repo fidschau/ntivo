@@ -5,12 +5,12 @@ Ntivo is an open source knowledge graph that connects codebases (backend, iOS, A
 ## Stack
 
 - **Language:** Kotlin. No Python. No TypeScript. All code is Kotlin unless a JVM library literally doesn't exist.
-- **AI agents:** Koog 0.7.3 (JetBrains, Apache 2.0) — stateful agent graphs with tool support. Koog also provides RAG and embedding modules.
-- **LLM:** Gemini via Koog's `simpleGoogleAIExecutor`. Model: `GoogleModels.Gemini2_5Flash` (free tier). Claude/Anthropic is available via `simpleAnthropicExecutor` if needed later.
+- **AI agents:** Koog 1.3.0 (JetBrains, Apache 2.0) — stateful agent graphs with tool support. Koog also provides RAG and embedding modules. Note: upstream merge activity dropped sharply after mid-2026; LangChain4j or Embabel are the JVM fallbacks if it stalls.
+- **LLM:** Gemini via `MultiLLMPromptExecutor(GoogleLLMClient(key))`. Model: `GoogleModels.Gemini2_5Flash` (free tier). In Koog 1.x the Google client is a separate **beta** module (`prompt-executor-google-client:1.3.0-beta`); Anthropic, OpenAI and Ollama clients are in the stable bundle.
 - **Embedding model:** `gemini-embedding-001` (text-only, 3072 dimensions, 2048 token input). Upgrade path: `gemini-embedding-2-preview` (multimodal, 8192 token input) — but embedding spaces are incompatible, so switching requires re-embedding everything.
 - **Always specify task type when embedding:** `RETRIEVAL_DOCUMENT` for indexing, `CODE_RETRIEVAL_QUERY` for code queries, `SEMANTIC_SIMILARITY` for drift detection.
-- **Knowledge graph:** Neo4j (Docker in dev, per-tenant `org_{orgId}` database)
-- **Vector store:** Qdrant (Docker in dev, per-tenant `chunks_{orgId}` collection)
+- **Knowledge graph:** Neo4j 5 Community (Docker in dev, default `neo4j` database, Java driver 6.3.0). Community edition supports one user database only.
+- **Vector store:** Qdrant (Docker in dev, `code_chunks` collection — `DEFAULT_COLLECTION` in ApiModels.kt)
 - **Code parsing:** Tree-sitter (JVM bindings)
 - **API:** Ktor with kotlinx.serialization for JSON
 - **Web UI:** Kotlin Multiplatform (Compose for Web / Kotlin/Wasm) — not TypeScript, not React
@@ -33,16 +33,16 @@ ntivo/
 │   ├── build.gradle.kts          ← depends on :shared
 │   └── src/main/
 │       ├── kotlin/io/ntivo/
-│       │   ├── ApiRouting.kt     ← REST API: /api/agent-chat, /api/rag-pipeline, /api/chat, /api/embed, /api/store, /api/search, /api/parse
+│       │   ├── ApiRouting.kt     ← REST API: /api/agent-chat, /api/rag-pipeline, /api/search, /api/parse, /api/graph/index
 │       │   ├── Application.kt    ← Ktor entry point, ContentNegotiation + CORS
-│       │   ├── CodebaseAgent.kt  ← Creates Koog agent with search_codebase tool (Phase 2 step 4)
+│       │   ├── CodebaseAgent.kt  ← Creates Koog agent with search_codebase tool (one agent per request)
+│       │   ├── CodeGraph.kt      ← Builds the Neo4j code graph (File/Class/Function, DECLARES/CALLS/INHERITS)
+│       │   ├── CodeParser.kt     ← Tree-sitter: parseKotlin, findFunctions (with container + calls), findClassDecls
 │       │   ├── CodeSearchTools.kt ← Koog ToolSet: searchCodebase tool for vector search over indexed code
-│       │   ├── EmbeddingDemo.kt  ← Gemini embedding + Qdrant demo (seeds 6 snippets)
-│       │   ├── GeminiEmbedder.kt ← Custom Embedder with taskType support
+│       │   ├── GeminiEmbedder.kt ← TaskTypeEmbedder interface + Gemini implementation
 │       │   ├── Routing.kt        ← GET /health
-│       │   ├── SimpleAgent.kt    ← Standalone Koog agent REPL (Phase 1)
 │       │   ├── StaticContent.kt  ← Serves Compose for Web production build
-│       │   └── TreeSitterDemo.kt ← Tree-sitter parser demo + findFunctions/findClasses utilities
+│       │   └── VectorStore.kt    ← Shared Qdrant client, stable point IDs, SHA-256 fingerprints
 │       └── resources/
 │           ├── application.yaml
 │           └── logback.xml
@@ -53,7 +53,7 @@ ntivo/
         │   ├── Main.kt           ← ComposeViewport entry point
         │   ├── App.kt            ← Root composable (theme + tabs + routing)
         │   ├── theme/NtivoTheme.kt
-        │   ├── components/       ← NtivoHeader, NtivoTabs (6 tabs), ResultPanel
+        │   ├── components/       ← NtivoHeader, NtivoTabs (5 tabs), ResultPanel
         │   ├── screens/          ← HealthScreen, RagPipelineScreen, ChatScreen, EmbedScreen, SearchScreen, ParseScreen
         │   └── api/NtivoApiClient.kt ← Ktor client using shared models
         └── resources/index.html  ← Minimal HTML host for Wasm canvas
@@ -63,22 +63,23 @@ Packages: `io.ntivo` (server), `io.ntivo.shared` (shared models), `io.ntivo.web`
 
 ## Architecture rules
 
-- **Multi-tenant from day one.** All Neo4j queries scoped to `org_{orgId}` database. All Qdrant operations scoped to `chunks_{orgId}` collection. Never mix org data.
+- **Single-tenant for now.** This is a learning project; multi-tenancy was dropped (Neo4j Community can't host per-org databases anyway). Don't add it back unless asked.
 - **Knowledge graph + RAG hybrid.** Graph for relationships (WHY), vector search for semantics (WHAT). Most queries use both.
 - **Chunk at function/method level**, not file level. Tree-sitter extracts individual functions.
-- **Confidence on every graph edge.** Store `LinkMethod` enum + `confidence: Float` on all code↔ticket edges.
+- **Confidence on every inferred graph edge.** Store `method` (e.g. `NAME_MATCH`) + `confidence` on edges that are guessed rather than certain (CALLS, INHERITS, future code↔ticket links). Name matching gives 1/N for N candidates.
 - **Embedding layer must be swappable.** Don't couple core logic to Gemini specifically — abstract behind an interface so Ollama/local models can be swapped in.
-- **Incremental indexing.** SHA-256 fingerprint per chunk. Skip re-embedding if unchanged.
+- **Incremental indexing.** SHA-256 fingerprint per chunk, deterministic point IDs (`FunctionChunk.pointId()`). Skip re-embedding if unchanged. The code graph is a full rebuild per index for now.
+- **Tree-sitter offsets are UTF-8 bytes.** Never `String.substring` with `startByte`/`endByte`; use `SourceBytes.text(node)` in CodeParser.kt.
 
 ## Koog usage
 
 Koog is the ONLY framework for agent orchestration, tool composition, and RAG. Do NOT add LangChain4j, LangChain, or any other agent/RAG framework.
 
-- Agent creation: `AIAgent(promptExecutor = simpleGoogleAIExecutor(key), llmModel = GoogleModels.Gemini2_5Flash, systemPrompt = "...")`
+- Agent creation: `AIAgent(promptExecutor = executor, llmModel = GoogleModels.Gemini2_5Flash, systemPrompt = "...", toolRegistry = ...)`. Share the executor; create the agent and its ToolSet per request.
 - Agents run with: `agent.run("input")` (suspend function, needs coroutine scope)
 - Tool registration: `ToolRegistry { tool(::functionName) }` with `@Tool` and `@LLMDescription` annotations
 - Koog includes: agents-core, agents-tools, rag-base, embeddings modules — use these before reaching for external libraries
-- Imports: `ai.koog.agents.core.agent.AIAgent`, `ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor`, `ai.koog.prompt.executor.clients.google.GoogleModels`
+- Imports: `ai.koog.agents.core.agent.AIAgent`, `ai.koog.prompt.executor.llms.MultiLLMPromptExecutor`, `ai.koog.prompt.executor.clients.google.GoogleLLMClient`, `ai.koog.prompt.executor.clients.google.GoogleModels`
 - Koog's built-in `GoogleLLMClient` does NOT pass `taskType` to the Gemini embedding API. Use our custom `GeminiEmbedder` instead — it implements Koog's `Embedder` interface and adds `taskType` support.
 - Qdrant Java client (`io.qdrant:client`) uses gRPC on port 6334. Use `kotlinx-coroutines-guava` for `.await()` on `ListenableFuture` returns.
 
@@ -131,10 +132,11 @@ Koog is the ONLY framework for agent orchestration, tool composition, and RAG. D
 # Health check
 curl http://localhost:8080/health
 
-# Standalone demos (Gradle tasks in server module)
-NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runAgent
-NTIVO_GEMINI_API_KEY="..." ./gradlew :server:runEmbeddingDemo
-./gradlew :server:runTreeSitterDemo
+# Tests (parser tests; no Docker or API key needed)
+./gradlew :server:test
+
+# Build the code graph for a folder, then explore at http://localhost:7474
+curl -X POST localhost:8080/api/graph/index -H 'Content-Type: application/json' -d '{"path":"/abs/path/to/repo"}'
 
 # Docker services (Neo4j + Qdrant)
 docker compose up -d               # Start Neo4j + Qdrant (background)
@@ -153,10 +155,18 @@ docker compose ps                  # Check service status
 2. ~~Chunk and embed each function into Qdrant~~ ✅ (POST /api/rag-pipeline)
 3. ~~Write the search function~~ ✅ (POST /api/search + chat in RAG Pipeline)
 4. ~~Wire to a Koog agent with search_codebase tool~~ ✅ (CodebaseAgent + CodeSearchTools + POST /api/agent-chat)
-5. Ask a real question and validate — NEXT
-6. Validate on 5 real questions — measure retrieval precision
+5. Ask a real question and validate
+6. Validate on 5 real questions — measure retrieval precision, with Claude Code + Atlassian/Datadog MCP as the baseline
 
-**Web Dev Console** — 6 tabs: Health, RAG Pipeline, Agent Chat, Embed + Store, Vector Search, Tree-sitter Parse. RAG Pipeline is the primary Phase 2 screen with integrated chat.
+**Phase 3 — Code knowledge graph.** 🔄 IN PROGRESS (Oct 2026, after a 6-month break and a cleanup pass).
+
+1. ~~Kotlin → Neo4j graph: File/Class/Function, DECLARES/CALLS/INHERITS with NAME_MATCH confidence~~ ✅ (POST /api/graph/index, Code Graph tab)
+2. Raise CALLS confidence using imports and receiver types — NEXT
+3. Give the Koog agent a graph-query tool next to searchCodebase; watch how it picks between them
+
+**Web Dev Console** — 5 tabs: Health, RAG Pipeline (index + agent chat with tool calls), Vector Search, Tree-sitter Parse, Code Graph.
+
+**Framing:** a learning and portfolio project (knowledge graphs + agent orchestration), not a product. Atlassian Rovo, Datadog Bits AI and MCP connectors already cover the original business pitch.
 
 Don't build: auth, rate limiting, multi-region, CI/CD, monitoring, admin UI. Not yet.
 

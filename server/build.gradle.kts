@@ -34,7 +34,9 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:$logback_version")
 
     // Koog AI agent framework
-    implementation("ai.koog:koog-agents:0.7.3")
+    implementation("ai.koog:koog-agents:1.3.0")
+    // Gemini support is a separate beta module in Koog 1.x (not in the stable koog-agents bundle)
+    implementation("ai.koog:prompt-executor-google-client:1.3.0-beta")
 
     // Ktor HTTP client (for Gemini embedding REST API)
     implementation("io.ktor:ktor-client-core")
@@ -49,6 +51,9 @@ dependencies {
     implementation("io.github.bonede:tree-sitter:0.24.4")
     implementation("io.github.bonede:tree-sitter-kotlin:0.3.8.1")
 
+    // Neo4j graph database driver (Bolt protocol)
+    implementation("org.neo4j.driver:neo4j-java-driver:6.3.0")
+
     testImplementation("io.ktor:ktor-server-test-host")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
@@ -58,7 +63,7 @@ dependencies {
 val copyWebDist by tasks.registering(Copy::class) {
     description = "Copy Compose for Web production build to server static resources"
     group = "build"
-    dependsOn(":web:wasmJsBrowserProductionWebpack")
+    dependsOn(":web:wasmJsBrowserDistribution")
     from(project(":web").layout.buildDirectory.dir("dist/wasmJs/productionExecutable"))
     into(layout.buildDirectory.dir("resources/main/static/compose"))
 }
@@ -67,27 +72,3 @@ tasks.named("processResources") {
     dependsOn(copyWebDist)
 }
 
-// Separate task to run the standalone Koog agent (without starting the Ktor server)
-tasks.register<JavaExec>("runAgent") {
-    description = "Run the standalone Koog agent REPL"
-    group = "application"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass = "io.ntivo.SimpleAgentKt"
-    standardInput = System.`in`
-}
-
-// Run the embedding demo (embeds code, stores in Qdrant, queries it back)
-tasks.register<JavaExec>("runEmbeddingDemo") {
-    description = "Run the Gemini embedding + Qdrant demo"
-    group = "application"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass = "io.ntivo.EmbeddingDemoKt"
-}
-
-// Run the Tree-sitter parsing demo (parses Kotlin source, extracts functions)
-tasks.register<JavaExec>("runTreeSitterDemo") {
-    description = "Run the Tree-sitter Kotlin parsing demo"
-    group = "application"
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass = "io.ntivo.TreeSitterDemoKt"
-}

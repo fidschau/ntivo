@@ -30,7 +30,7 @@ if [ "$QUICK" = false ] && [ "$SERVER_ONLY" = false ]; then
   # Ensure Docker Desktop is running (macOS)
   if ! docker info >/dev/null 2>&1; then
     echo "🐳 Docker Desktop not running — starting it..."
-    open -a "Docker Desktop"
+    open -a Docker
     printf "   Waiting for Docker to be ready"
     for i in $(seq 1 60); do
       if docker info >/dev/null 2>&1; then

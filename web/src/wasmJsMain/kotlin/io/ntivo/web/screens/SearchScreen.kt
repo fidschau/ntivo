@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.ntivo.shared.DEFAULT_COLLECTION
 import io.ntivo.shared.SearchResultItem
 import io.ntivo.web.api.NtivoApiClient
 import io.ntivo.web.components.ResultPanel
@@ -34,7 +35,7 @@ private fun formatFloat(value: Float, decimals: Int): String {
 @Composable
 fun SearchScreen(modifier: Modifier = Modifier) {
     var query by remember { mutableStateOf("") }
-    var collection by remember { mutableStateOf("chunks_demo") }
+    var collection by remember { mutableStateOf(DEFAULT_COLLECTION) }
     var limit by remember { mutableStateOf("5") }
     var resultState by remember { mutableStateOf<ResultState>(ResultState.Empty) }
     var searchResults by remember { mutableStateOf<List<SearchResultItem>>(emptyList()) }
@@ -186,11 +187,11 @@ fun SearchScreen(modifier: Modifier = Modifier) {
                 searchResults = emptyList()
                 scope.launch {
                     try {
-                        val response = NtivoApiClient.search(q, collection.trim().ifEmpty { "chunks_demo" }, parsedLimit)
+                        val response = NtivoApiClient.search(q, collection.trim().ifEmpty { DEFAULT_COLLECTION }, parsedLimit)
                         if (response.results.isEmpty()) {
                             searchResults = emptyList()
                             resultState = ResultState.Success(
-                                "No results found. Try storing some text first on the Embed + Store tab."
+                                "No results found. Index some code first on the RAG Pipeline tab."
                             )
                         } else {
                             searchResults = response.results

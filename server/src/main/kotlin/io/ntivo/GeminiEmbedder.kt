@@ -33,6 +33,14 @@ enum class EmbeddingTaskType {
     CLUSTERING
 }
 
+/**
+ * An [Embedder] that takes an explicit task type. Callers depend on this,
+ * not on [GeminiEmbedder], so another model (e.g. Ollama) can be swapped in.
+ */
+interface TaskTypeEmbedder : Embedder {
+    suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector
+}
+
 // --- Gemini REST API request/response models ---
 
 @Serializable
@@ -75,7 +83,7 @@ class GeminiEmbedder(
     private val apiKey: String,
     private val model: String = "gemini-embedding-001",
     private val defaultTaskType: EmbeddingTaskType = EmbeddingTaskType.RETRIEVAL_DOCUMENT
-) : Embedder {
+) : TaskTypeEmbedder {
 
     private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -87,7 +95,7 @@ class GeminiEmbedder(
      * Embed text with an explicit task type.
      * Prefer this over the no-arg version for clarity.
      */
-    suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector {
+    override suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector {
         val request = GeminiEmbedRequest(
             model = "models/$model",
             content = GeminiContent(parts = listOf(GeminiPart(text))),

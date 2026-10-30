@@ -1,51 +1,31 @@
 package io.ntivo
 
-import ai.koog.agents.core.agent.AIAgent
-import ai.koog.prompt.executor.clients.google.GoogleModels
-import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
+import ai.koog.prompt.executor.clients.google.GoogleLLMClient
+import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.qdrant.client.PointIdFactory.id
-import io.qdrant.client.QdrantClient
-import io.qdrant.client.QdrantGrpcClient
-import io.qdrant.client.ValueFactory.value
-import io.qdrant.client.VectorsFactory.vectors
-import io.qdrant.client.WithPayloadSelectorFactory
-import io.qdrant.client.grpc.Collections.Distance
-import io.qdrant.client.grpc.Collections.VectorParams
-import io.qdrant.client.grpc.Points.PointStruct
-import io.qdrant.client.grpc.Points.SearchPoints
-import kotlinx.coroutines.guava.await
 import io.ntivo.shared.*
-import org.treesitter.TSParser
-import org.treesitter.TreeSitterKotlin
+import java.io.File
+
+private const val MISSING_KEY = "NTIVO_GEMINI_API_KEY not set. Export it and restart the server."
 
 // --- API routing ---
 
 fun Application.configureApiRouting() {
-    // Lazy-init shared resources (nullable if API key is missing)
+    // Shared, long-lived clients. Gemini-backed ones are null if the API key is missing.
     val apiKey: String? = System.getenv("NTIVO_GEMINI_API_KEY")
+    val executor = apiKey?.let { MultiLLMPromptExecutor(GoogleLLMClient(it)) }
+    val embedder: TaskTypeEmbedder? = apiKey?.let { GeminiEmbedder(it) }
+    val vectorStore = VectorStore()
+    val codeGraph = CodeGraph()
 
-    val agent: AIAgent<String, String>? = apiKey?.let {
-        AIAgent(
-            promptExecutor = simpleGoogleAIExecutor(it),
-            llmModel = GoogleModels.Gemini2_5Flash,
-            systemPrompt = "You are a helpful assistant that knows about codebases. " +
-                "You help engineers understand code, trace features across repositories, " +
-                "and answer questions about software architecture."
-        )
+    monitor.subscribe(ApplicationStopped) {
+        vectorStore.close()
+        codeGraph.close()
     }
-
-    val embedder: GeminiEmbedder? = apiKey?.let { GeminiEmbedder(it) }
-
-    // Codebase agent with search tool (Phase 2 step 4)
-    val searchTools: CodeSearchTools? = embedder?.let { CodeSearchTools(it) }
-    val codebaseAgent = if (apiKey != null && embedder != null) {
-        createCodebaseAgent(apiKey, embedder)
-    } else null
 
     routing {
         route("/api") {
@@ -57,149 +37,24 @@ fun Application.configureApiRouting() {
                     return@post call.respond(HttpStatusCode.BadRequest,
                         ErrorResponse("'prompt' is required and cannot be blank."))
                 }
-                val agentInstance = codebaseAgent
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
-                val tools = searchTools
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("Search tools not initialized."))
+                if (executor == null || embedder == null) {
+                    return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
+                }
 
+                // Fresh tools + agent per request: the call log belongs to this run only
+                val tools = CodeSearchTools(embedder, vectorStore, request.collection)
+                val agent = createCodebaseAgent(executor, tools)
                 try {
-                    tools.clearCallLog()
-                    val result = agentInstance.run(request.prompt)
+                    val result = agent.run(request.prompt)
                     call.respond(AgentChatResponse(
                         response = result,
                         toolCalls = tools.callLog.map { tc ->
-                            AgentToolCall(
-                                tool = tc.tool,
-                                args = tc.args,
-                                result = tc.resultSummary
-                            )
+                            AgentToolCall(tool = tc.tool, args = tc.args, result = tc.resultSummary)
                         }
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.BadGateway,
                         ErrorResponse("Agent error: ${e.message}"))
-                }
-            }
-
-            // POST /api/chat — Send a prompt to the Koog agent
-            post("/chat") {
-                val request = call.receive<ChatRequest>()
-                if (request.prompt.isBlank()) {
-                    return@post call.respond(HttpStatusCode.BadRequest,
-                        ErrorResponse("'prompt' is required and cannot be blank."))
-                }
-                val agentInstance = agent
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
-                try {
-                    val result = agentInstance.run(request.prompt)
-                    call.respond(ChatResponse(response = result))
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadGateway,
-                        ErrorResponse("Gemini error: ${e.message}"))
-                }
-            }
-
-            // POST /api/embed — Embed text with a specific task type
-            post("/embed") {
-                val request = call.receive<EmbedRequest>()
-                if (request.text.isBlank()) {
-                    return@post call.respond(HttpStatusCode.BadRequest,
-                        ErrorResponse("'text' is required and cannot be blank."))
-                }
-                val taskType = try {
-                    EmbeddingTaskType.valueOf(request.taskType)
-                } catch (e: IllegalArgumentException) {
-                    return@post call.respond(HttpStatusCode.BadRequest,
-                        ErrorResponse("Invalid taskType '${request.taskType}'. " +
-                            "Valid: ${EmbeddingTaskType.entries.joinToString()}"))
-                }
-                val emb = embedder
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
-                try {
-                    val vector = emb.embed(request.text, taskType)
-                    call.respond(EmbedResponse(
-                        dimension = vector.dimension,
-                        preview = vector.values.take(10),
-                        taskType = taskType.name
-                    ))
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadGateway,
-                        ErrorResponse("Embedding error: ${e.message}"))
-                }
-            }
-
-            // POST /api/store — Embed text and store it in Qdrant
-            post("/store") {
-                val request = call.receive<StoreRequest>()
-                if (request.text.isBlank()) {
-                    return@post call.respond(HttpStatusCode.BadRequest,
-                        ErrorResponse("'text' is required and cannot be blank."))
-                }
-                val emb = embedder
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
-
-                val qdrant: QdrantClient
-                try {
-                    qdrant = QdrantClient(
-                        QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
-                    )
-                } catch (e: Exception) {
-                    return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("Cannot connect to Qdrant at localhost:6334. Run: docker compose up -d"))
-                }
-
-                try {
-                    // Create collection if it doesn't exist
-                    val collections = qdrant.listCollectionsAsync().await()
-                    if (!collections.contains(request.collection)) {
-                        qdrant.createCollectionAsync(
-                            request.collection,
-                            VectorParams.newBuilder()
-                                .setDistance(Distance.Cosine)
-                                .setSize(3072)  // gemini-embedding-001 dimensions
-                                .build()
-                        ).await()
-                    }
-
-                    // Embed with RETRIEVAL_DOCUMENT task type (for indexing)
-                    val vector = emb.embed(request.text, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
-                    val floatValues = vector.values.map { it.toFloat() }
-
-                    // Use millis as a simple unique ID
-                    val pointId = System.currentTimeMillis()
-
-                    // Store vector with the actual text in the payload
-                    qdrant.upsertAsync(
-                        request.collection,
-                        listOf(
-                            PointStruct.newBuilder()
-                                .setId(id(pointId))
-                                .setVectors(vectors(floatValues))
-                                .putAllPayload(mapOf(
-                                    "text" to value(request.text.take(1000)),
-                                    "label" to value(request.label.ifBlank { "Unlabeled" }),
-                                    "source" to value("dev_console")
-                                ))
-                                .build()
-                        )
-                    ).await()
-
-                    call.respond(StoreResponse(
-                        stored = true,
-                        collection = request.collection,
-                        dimension = vector.dimension,
-                        pointId = pointId
-                    ))
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Store error: ${e.message}"))
-                } finally {
-                    qdrant.close()
                 }
             }
 
@@ -211,40 +66,19 @@ fun Application.configureApiRouting() {
                         ErrorResponse("'query' is required and cannot be blank."))
                 }
                 val emb = embedder
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
-
-                val safeLimit = request.limit.coerceIn(1, 20)
-                val qdrant: QdrantClient
-                try {
-                    qdrant = QdrantClient(
-                        QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
-                    )
-                } catch (e: Exception) {
-                    return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("Cannot connect to Qdrant at localhost:6334. Run: docker compose up -d"))
-                }
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
 
                 try {
-                    // Check collection exists
-                    val collections = qdrant.listCollectionsAsync().await()
-                    if (!collections.contains(request.collection)) {
+                    if (!vectorStore.collectionExists(request.collection)) {
                         return@post call.respond(HttpStatusCode.NotFound,
                             ErrorResponse("Collection '${request.collection}' not found. " +
-                                "Run the embedding demo first: NTIVO_GEMINI_API_KEY=\"...\" ./gradlew runEmbeddingDemo"))
+                                "Index some code on the RAG Pipeline tab first."))
                     }
 
                     val queryVector = emb.embed(request.query, EmbeddingTaskType.CODE_RETRIEVAL_QUERY)
-                    val queryFloats = queryVector.values.map { it.toFloat() }
-
-                    val results = qdrant.searchAsync(
-                        SearchPoints.newBuilder()
-                            .setCollectionName(request.collection)
-                            .addAllVector(queryFloats)
-                            .setLimit(safeLimit.toLong())
-                            .setWithPayload(WithPayloadSelectorFactory.enable(true))
-                            .build()
-                    ).await()
+                    val results = vectorStore.search(
+                        request.collection, queryVector.values, request.limit.coerceIn(1, 20)
+                    )
 
                     call.respond(SearchResponse(
                         results = results.map { r ->
@@ -256,9 +90,7 @@ fun Application.configureApiRouting() {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Search error: ${e.message}"))
-                } finally {
-                    qdrant.close()
+                        ErrorResponse("Search error: ${e.message}. Is Qdrant running? docker compose up -d"))
                 }
             }
 
@@ -270,30 +102,20 @@ fun Application.configureApiRouting() {
                         ErrorResponse("'code' is required and cannot be blank."))
                 }
                 val emb = embedder
-                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable,
-                        ErrorResponse("NTIVO_GEMINI_API_KEY not set. Export it and restart the server."))
+                    ?: return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
 
                 val steps = mutableListOf<PipelineStep>()
                 val pipelineStart = System.currentTimeMillis()
+                fun elapsed() = "${System.currentTimeMillis() - pipelineStart}ms"
 
                 // Step 1: Parse
                 val parseStart = System.currentTimeMillis()
-                val functions: List<FunctionChunk>
-                val classes: List<String>
+                val functions = mutableListOf<FunctionChunk>()
+                val classes = mutableListOf<String>()
                 try {
-                    val parser = TSParser()
-                    parser.setLanguage(TreeSitterKotlin())
-                    val tree = parser.parseString(null, request.code)
-                    val root = tree.rootNode
-
-                    val fnList = mutableListOf<FunctionChunk>()
-                    findFunctions(root, request.code, fnList)
-                    functions = fnList
-
-                    val classList = mutableListOf<String>()
-                    findClasses(root, request.code, classList)
-                    classes = classList
-
+                    val root = parseKotlin(request.code).rootNode
+                    findFunctions(root, request.code, functions)
+                    findClasses(root, request.code, classes)
                     steps.add(PipelineStep(
                         stage = "parse",
                         message = "Tree-sitter found ${classes.size} class(es), ${functions.size} function(s)",
@@ -303,14 +125,12 @@ fun Application.configureApiRouting() {
                 } catch (e: Exception) {
                     steps.add(PipelineStep("parse", "Parse failed: ${e.message}", false,
                         System.currentTimeMillis() - parseStart))
-                    return@post call.respond(RagPipelineResponse(steps, 0,
-                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                    return@post call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
 
                 if (functions.isEmpty()) {
                     steps.add(PipelineStep("chunk", "No functions found to index", false, 0))
-                    return@post call.respond(RagPipelineResponse(steps, 0,
-                        "${System.currentTimeMillis() - pipelineStart}ms"))
+                    return@post call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
 
                 // Step 2: Chunk
@@ -321,37 +141,26 @@ fun Application.configureApiRouting() {
                     durationMs = 0
                 ))
 
-                // Step 3 & 4: Embed + Store
-                val qdrant: QdrantClient
+                // Step 3 & 4: Embed + Store, skipping functions whose body hasn't changed
                 try {
-                    qdrant = QdrantClient(
-                        QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
-                    )
-                } catch (e: Exception) {
-                    steps.add(PipelineStep("store", "Cannot connect to Qdrant: ${e.message}", false, 0))
-                    return@post call.respond(RagPipelineResponse(steps, 0,
-                        "${System.currentTimeMillis() - pipelineStart}ms"))
-                }
-
-                try {
-                    // Create collection if needed
-                    val collections = qdrant.listCollectionsAsync().await()
-                    if (!collections.contains(request.collection)) {
-                        qdrant.createCollectionAsync(
-                            request.collection,
-                            VectorParams.newBuilder()
-                                .setDistance(Distance.Cosine)
-                                .setSize(3072)
-                                .build()
-                        ).await()
-                    }
+                    vectorStore.ensureCollection(request.collection)
+                    val existing = vectorStore.fingerprints(request.collection, functions.map { it.pointId() })
 
                     var stored = 0
+                    var skipped = 0
                     for (fn in functions) {
+                        val fingerprint = fn.fingerprint()
+                        if (existing[fn.pointId()] == fingerprint) {
+                            skipped++
+                            steps.add(PipelineStep("skip",
+                                "${fn.name}: unchanged (sha256 ${fingerprint.take(8)}), kept existing vector",
+                                true, 0))
+                            continue
+                        }
+
                         val embedStart = System.currentTimeMillis()
                         val vector = emb.embed(fn.body, EmbeddingTaskType.RETRIEVAL_DOCUMENT)
                         val embedMs = System.currentTimeMillis() - embedStart
-
                         steps.add(PipelineStep(
                             stage = "embed",
                             message = "${fn.name}: ${vector.dimension}-dim vector in ${embedMs}ms",
@@ -359,52 +168,26 @@ fun Application.configureApiRouting() {
                             durationMs = embedMs
                         ))
 
-                        val floatValues = vector.values.map { it.toFloat() }
-                        val pointId = System.currentTimeMillis()
-
-                        qdrant.upsertAsync(
-                            request.collection,
-                            listOf(
-                                PointStruct.newBuilder()
-                                    .setId(id(pointId))
-                                    .setVectors(vectors(floatValues))
-                                    .putAllPayload(mapOf(
-                                        "text" to value(fn.body.take(2000)),
-                                        "label" to value(fn.name),
-                                        "source" to value("rag_pipeline"),
-                                        "receiver" to value(fn.receiver ?: ""),
-                                        "parameters" to value(fn.parameters),
-                                        "startLine" to value(fn.startLine.toLong()),
-                                        "endLine" to value(fn.endLine.toLong())
-                                    ))
-                                    .build()
-                            )
-                        ).await()
-
+                        vectorStore.upsert(request.collection, fn.pointId(), vector.values, fn.payload())
                         stored++
-                        // Small delay to avoid duplicate millis IDs
-                        Thread.sleep(1)
                     }
 
                     steps.add(PipelineStep(
                         stage = "store",
-                        message = "$stored/$stored chunks stored in ${request.collection} (cosine)",
+                        message = "$stored stored, $skipped unchanged in ${request.collection} (cosine)",
                         success = true,
                         durationMs = 0
                     ))
 
-                    val totalMs = System.currentTimeMillis() - pipelineStart
                     call.respond(RagPipelineResponse(
                         steps = steps,
                         chunksIndexed = stored,
-                        totalTime = "${totalMs}ms"
+                        totalTime = elapsed(),
+                        chunksSkipped = skipped
                     ))
                 } catch (e: Exception) {
                     steps.add(PipelineStep("store", "Store error: ${e.message}", false, 0))
-                    call.respond(RagPipelineResponse(steps, 0,
-                        "${System.currentTimeMillis() - pipelineStart}ms"))
-                } finally {
-                    qdrant.close()
+                    call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
             }
 
@@ -416,10 +199,7 @@ fun Application.configureApiRouting() {
                         ErrorResponse("'code' is required and cannot be blank."))
                 }
                 try {
-                    val parser = TSParser()
-                    parser.setLanguage(TreeSitterKotlin())
-                    val tree = parser.parseString(null, request.code)
-                    val root = tree.rootNode
+                    val root = parseKotlin(request.code).rootNode
 
                     val functions = mutableListOf<FunctionChunk>()
                     findFunctions(root, request.code, functions)
@@ -444,6 +224,22 @@ fun Application.configureApiRouting() {
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
                         ErrorResponse("Parse error: ${e.message}"))
+                }
+            }
+
+            // POST /api/graph/index — Parse every .kt file under a directory into Neo4j
+            post("/graph/index") {
+                val request = call.receive<GraphIndexRequest>()
+                val root = File(request.path).absoluteFile.normalize()
+                if (!root.isDirectory) {
+                    return@post call.respond(HttpStatusCode.BadRequest,
+                        ErrorResponse("'${request.path}' is not a directory (resolved to $root)."))
+                }
+                try {
+                    call.respond(codeGraph.index(root))
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError,
+                        ErrorResponse("Graph index error: ${e.message}. Is Neo4j running? docker compose up -d"))
                 }
             }
         }

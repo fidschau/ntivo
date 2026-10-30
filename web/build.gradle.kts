@@ -46,9 +46,9 @@ kotlin {
                 implementation(compose.ui)
 
                 // Ktor client for API calls
-                implementation("io.ktor:ktor-client-core:3.4.0")
-                implementation("io.ktor:ktor-client-content-negotiation:3.4.0")
-                implementation("io.ktor:ktor-serialization-kotlinx-json:3.4.0")
+                implementation("io.ktor:ktor-client-core:3.4.2")
+                implementation("io.ktor:ktor-client-content-negotiation:3.4.2")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:3.4.2")
             }
         }
     }

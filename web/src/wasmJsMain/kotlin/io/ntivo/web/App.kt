@@ -43,10 +43,9 @@ fun App() {
                         onHealthResult = { isHealthy = it }
                     )
                     NtivoTab.RAG_PIPELINE -> RagPipelineScreen()
-                    NtivoTab.CHAT -> ChatScreen()
-                    NtivoTab.EMBED -> EmbedScreen()
                     NtivoTab.SEARCH -> SearchScreen()
                     NtivoTab.PARSE -> ParseScreen()
+                    NtivoTab.GRAPH -> GraphScreen()
                 }
             }
         }

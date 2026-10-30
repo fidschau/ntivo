@@ -2,34 +2,16 @@ package io.ntivo.shared
 
 import kotlinx.serialization.Serializable
 
+/** Qdrant collection used when a request doesn't name one. Single-tenant for now. */
+const val DEFAULT_COLLECTION = "code_chunks"
+
 // Health
 @Serializable
 data class HealthResponse(val status: String)
 
-// Chat
-@Serializable
-data class ChatRequest(val prompt: String)
-
-@Serializable
-data class ChatResponse(val response: String)
-
-// Embedding
-@Serializable
-data class EmbedRequest(val text: String, val taskType: String = "RETRIEVAL_DOCUMENT")
-
-@Serializable
-data class EmbedResponse(val dimension: Int, val preview: List<Double>, val taskType: String)
-
-// Store
-@Serializable
-data class StoreRequest(val text: String, val label: String = "", val collection: String = "chunks_demo")
-
-@Serializable
-data class StoreResponse(val stored: Boolean, val collection: String, val dimension: Int, val pointId: Long)
-
 // Search
 @Serializable
-data class SearchRequest(val query: String, val collection: String = "chunks_demo", val limit: Int = 5)
+data class SearchRequest(val query: String, val collection: String = DEFAULT_COLLECTION, val limit: Int = 5)
 
 @Serializable
 data class SearchResponse(val results: List<SearchResultItem>)
@@ -56,13 +38,14 @@ data class ParsedFunction(
 
 // RAG Pipeline
 @Serializable
-data class RagPipelineRequest(val code: String, val collection: String = "chunks_demo")
+data class RagPipelineRequest(val code: String, val collection: String = DEFAULT_COLLECTION)
 
 @Serializable
 data class RagPipelineResponse(
     val steps: List<PipelineStep>,
     val chunksIndexed: Int,
-    val totalTime: String
+    val totalTime: String,
+    val chunksSkipped: Int = 0
 )
 
 @Serializable
@@ -75,7 +58,7 @@ data class PipelineStep(
 
 // Agent Chat (with tool calls)
 @Serializable
-data class AgentChatRequest(val prompt: String, val collection: String = "chunks_demo")
+data class AgentChatRequest(val prompt: String, val collection: String = DEFAULT_COLLECTION)
 
 @Serializable
 data class AgentChatResponse(
@@ -88,6 +71,22 @@ data class AgentToolCall(
     val tool: String,
     val args: String,
     val result: String
+)
+
+// Code Graph
+@Serializable
+data class GraphIndexRequest(val path: String)
+
+@Serializable
+data class GraphIndexResponse(
+    val root: String,
+    val files: Int,
+    val classes: Int,
+    val functions: Int,
+    val callEdges: Int,
+    val ambiguousCallEdges: Int,
+    val inheritsEdges: Int,
+    val durationMs: Long
 )
 
 // Error

@@ -23,28 +23,7 @@ object NtivoApiClient {
         return client.get("$BASE_URL/health").body()
     }
 
-    suspend fun chat(prompt: String): ChatResponse {
-        return client.post("$BASE_URL/api/chat") {
-            contentType(ContentType.Application.Json)
-            setBody(ChatRequest(prompt = prompt))
-        }.body()
-    }
-
-    suspend fun embed(text: String, taskType: String = "RETRIEVAL_DOCUMENT"): EmbedResponse {
-        return client.post("$BASE_URL/api/embed") {
-            contentType(ContentType.Application.Json)
-            setBody(EmbedRequest(text = text, taskType = taskType))
-        }.body()
-    }
-
-    suspend fun store(text: String, label: String = "", collection: String = "chunks_demo"): StoreResponse {
-        return client.post("$BASE_URL/api/store") {
-            contentType(ContentType.Application.Json)
-            setBody(StoreRequest(text = text, label = label, collection = collection))
-        }.body()
-    }
-
-    suspend fun search(query: String, collection: String = "chunks_demo", limit: Int = 5): SearchResponse {
+    suspend fun search(query: String, collection: String = DEFAULT_COLLECTION, limit: Int = 5): SearchResponse {
         return client.post("$BASE_URL/api/search") {
             contentType(ContentType.Application.Json)
             setBody(SearchRequest(query = query, collection = collection, limit = limit))
@@ -58,17 +37,24 @@ object NtivoApiClient {
         }.body()
     }
 
-    suspend fun agentChat(prompt: String, collection: String = "chunks_demo"): AgentChatResponse {
+    suspend fun agentChat(prompt: String, collection: String = DEFAULT_COLLECTION): AgentChatResponse {
         return client.post("$BASE_URL/api/agent-chat") {
             contentType(ContentType.Application.Json)
             setBody(AgentChatRequest(prompt = prompt, collection = collection))
         }.body()
     }
 
-    suspend fun ragPipeline(code: String, collection: String = "chunks_demo"): RagPipelineResponse {
+    suspend fun ragPipeline(code: String, collection: String = DEFAULT_COLLECTION): RagPipelineResponse {
         return client.post("$BASE_URL/api/rag-pipeline") {
             contentType(ContentType.Application.Json)
             setBody(RagPipelineRequest(code = code, collection = collection))
+        }.body()
+    }
+
+    suspend fun indexGraph(path: String): GraphIndexResponse {
+        return client.post("$BASE_URL/api/graph/index") {
+            contentType(ContentType.Application.Json)
+            setBody(GraphIndexRequest(path = path))
         }.body()
     }
 }

@@ -3,19 +3,7 @@ package io.ntivo
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
-import io.qdrant.client.QdrantClient
-import io.qdrant.client.QdrantGrpcClient
-import io.qdrant.client.WithPayloadSelectorFactory
-import io.qdrant.client.grpc.Points.SearchPoints
-import kotlinx.coroutines.guava.await
 
-/**
- * Koog ToolSet that gives the agent the ability to search indexed code.
- *
- * The agent decides when to call [searchCodebase] based on the user's question.
- * This is the key difference from Phase 2 steps 1-3 where search was forced —
- * now the agent chooses whether to search or answer directly.
- */
 /** Record of a tool call made during an agent run. */
 data class ToolCallRecord(
     val tool: String,
@@ -23,16 +11,21 @@ data class ToolCallRecord(
     val resultSummary: String
 )
 
+/**
+ * Koog ToolSet that gives the agent the ability to search indexed code.
+ *
+ * The agent decides when to call [searchCodebase] based on the user's question.
+ * Create one instance per agent run: [callLog] records only that run's calls.
+ */
 @LLMDescription("Tools for searching an indexed codebase using semantic vector search")
 class CodeSearchTools(
-    private val embedder: GeminiEmbedder,
-    private val collection: String = "chunks_demo"
+    private val embedder: TaskTypeEmbedder,
+    private val store: VectorStore,
+    private val collection: String
 ) : ToolSet {
 
-    /** Tool calls made during the current agent run. Call [clearCallLog] before each run. */
     private val _callLog = mutableListOf<ToolCallRecord>()
     val callLog: List<ToolCallRecord> get() = _callLog.toList()
-    fun clearCallLog() { _callLog.clear() }
 
     @Tool
     @LLMDescription(
@@ -45,36 +38,21 @@ class CodeSearchTools(
         @LLMDescription("The search query describing what code to find, e.g. 'authentication logic' or 'payment processing'")
         query: String
     ): String {
-        val qdrant = QdrantClient(
-            QdrantGrpcClient.newBuilder("localhost", 6334, false).build()
-        )
-
         return try {
-            // Check collection exists
-            val collections = qdrant.listCollectionsAsync().await()
-            if (!collections.contains(collection)) {
+            if (!store.collectionExists(collection)) {
+                _callLog.add(ToolCallRecord("searchCodebase", query, "collection '$collection' missing"))
                 return "No code has been indexed yet. The collection '$collection' does not exist. " +
                     "Ask the user to index some code first using the RAG Pipeline."
             }
 
             // Embed the query with CODE_RETRIEVAL_QUERY task type
             val queryVector = embedder.embed(query, EmbeddingTaskType.CODE_RETRIEVAL_QUERY)
-            val queryFloats = queryVector.values.map { it.toFloat() }
-
-            val results = qdrant.searchAsync(
-                SearchPoints.newBuilder()
-                    .setCollectionName(collection)
-                    .addAllVector(queryFloats)
-                    .setLimit(3)
-                    .setWithPayload(WithPayloadSelectorFactory.enable(true))
-                    .build()
-            ).await()
+            val results = store.search(collection, queryVector.values, limit = 3)
 
             if (results.isEmpty()) {
-                val noResults = "No matching code found for query: '$query'. " +
-                    "The indexed code may not contain anything related to this topic."
                 _callLog.add(ToolCallRecord("searchCodebase", query, "0 results"))
-                return noResults
+                return "No matching code found for query: '$query'. " +
+                    "The indexed code may not contain anything related to this topic."
             }
 
             _callLog.add(ToolCallRecord(
@@ -103,9 +81,8 @@ class CodeSearchTools(
                 }
             }
         } catch (e: Exception) {
+            _callLog.add(ToolCallRecord("searchCodebase", query, "failed: ${e.message}"))
             "Search failed: ${e.message}"
-        } finally {
-            qdrant.close()
         }
     }
 }

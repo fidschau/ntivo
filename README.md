@@ -99,23 +99,14 @@ The server starts at `http://localhost:8080` with a built-in web dev console for
 | `GET /health` | Health check | Nothing |
 | `POST /api/agent-chat` | Codebase agent with search tool (decides when to search) | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/rag-pipeline` | Full pipeline: parse, chunk, embed, store | `NTIVO_GEMINI_API_KEY` + Qdrant |
-| `POST /api/chat` | Send a prompt to the Koog agent (no tools) | `NTIVO_GEMINI_API_KEY` |
-| `POST /api/embed` | Embed text with task type | `NTIVO_GEMINI_API_KEY` |
-| `POST /api/store` | Embed text and store in Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/search` | Vector search over Qdrant | `NTIVO_GEMINI_API_KEY` + Qdrant |
 | `POST /api/parse` | Parse Kotlin code with Tree-sitter | Nothing |
+| `POST /api/graph/index` | Parse a folder of Kotlin into a Neo4j code graph | Neo4j |
 
-### Standalone Demos
+### Tests
 
 ```bash
-# Interactive AI agent REPL
-NTIVO_GEMINI_API_KEY="..." ./gradlew runAgent
-
-# Embedding + Qdrant storage demo (requires Docker)
-NTIVO_GEMINI_API_KEY="..." ./gradlew runEmbeddingDemo
-
-# Tree-sitter parsing demo (no API key needed)
-./gradlew runTreeSitterDemo
+./gradlew :server:test   # Tree-sitter parser tests (no API key or Docker needed)
 ```
 
 ### Docker Services
