@@ -206,6 +206,23 @@ class IndexJobTest {
     }
 
     @Test
+    fun `same-signature functions in one file get distinct piece ids`() {
+        // e.g. `override fun log()` in two anonymous objects of one class (seen in JakeWharton/timber)
+        val first = FunctionChunk("log", null, "()", 3, 3, "override fun log() { a() }", container = "Tree")
+        val unique = FunctionChunk("plant", null, "()", 6, 6, "fun plant() {}", container = "Tree")
+        val second = FunctionChunk("log", null, "()", 9, 9, "override fun log() { b() }", container = "Tree")
+        val file = ParsedSourceFile("Tree.kt", Language.KOTLIN, ParsedFile(listOf(first, unique, second), emptyList()))
+
+        val pieces = toPieces("s1", "timber", file)
+        assertEquals(3, pieces.map { it.id }.toSet().size)
+        // The first occurrence and unique functions keep the plain id
+        assertEquals(pieceId("s1", "Tree.kt", first), pieces[0].id)
+        assertEquals(pieceId("s1", "Tree.kt", unique), pieces[1].id)
+        assertEquals(pieceId("s1", "Tree.kt", second, 1), pieces[2].id)
+        assertEquals(listOf(3, 6, 9), pieces.map { it.startLine })
+    }
+
+    @Test
     fun `secrets in code are redacted before indexing`() {
         val body = "val key = \"AIzaSyA1234567890abcdefghijklmnopqrstuv\"\nval gh = \"ghp_abcdefghijklmnopqrstuvwxyz0123456789\""
         val file = ParsedSourceFile(
