@@ -5,6 +5,9 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ntivo.agent.AnswerService
+import io.ntivo.agent.AnswerStore
+import io.ntivo.agent.safeMessage
 import io.ntivo.shared.*
 import java.io.File
 
@@ -18,11 +21,14 @@ fun Application.configureApiRouting(ctx: AppContext) {
     val embedder = ctx.embedder
     val vectorStore = ctx.vectorStore
     val codeGraph = ctx.codeGraph
+    val answers = AnswerService(ctx)
 
     routing {
         route("/api") {
 
-            // POST /api/agent-chat — Codebase agent with search_codebase tool
+            // POST /api/agent-chat — Under the hood chat. Answers through the same service as
+            // /api/ask (all ready sources; the request's collection is ignored) and returns
+            // the prose plus the tool calls from the trace.
             post("/agent-chat") {
                 val request = call.receive<AgentChatRequest>()
                 if (request.prompt.isBlank()) {
@@ -33,20 +39,16 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     return@post call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse(MISSING_KEY))
                 }
 
-                // Fresh tools + agent per request: the call log belongs to this run only
-                val tools = CodeSearchTools(embedder, vectorStore, request.collection)
-                val agent = createCodebaseAgent(executor, tools)
                 try {
-                    val result = agent.run(request.prompt)
+                    val answer = answers.ask(request.prompt, null)
+                    val toolCalls = AnswerStore(ctx.tracesDir).trace(answer.id)?.toolCalls.orEmpty()
                     call.respond(AgentChatResponse(
-                        response = result,
-                        toolCalls = tools.callLog.map { tc ->
-                            AgentToolCall(tool = tc.tool, args = tc.args, result = tc.resultSummary)
-                        }
+                        response = answer.prose,
+                        toolCalls = toolCalls.map { AgentToolCall(tool = it.tool, args = it.args, result = it.summary) }
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.BadGateway,
-                        ErrorResponse("Agent error: ${e.message}"))
+                        ErrorResponse("Agent error: ${safeMessage(e)}"))
                 }
             }
 
@@ -82,7 +84,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Search error: ${e.message}. Is Qdrant running? docker compose up -d"))
+                        ErrorResponse("Search error: ${safeMessage(e)}. Is Qdrant running? docker compose up -d"))
                 }
             }
 
@@ -115,7 +117,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                         durationMs = System.currentTimeMillis() - parseStart
                     ))
                 } catch (e: Exception) {
-                    steps.add(PipelineStep("parse", "Parse failed: ${e.message}", false,
+                    steps.add(PipelineStep("parse", "Parse failed: ${safeMessage(e)}", false,
                         System.currentTimeMillis() - parseStart))
                     return@post call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
@@ -178,7 +180,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                         chunksSkipped = skipped
                     ))
                 } catch (e: Exception) {
-                    steps.add(PipelineStep("store", "Store error: ${e.message}", false, 0))
+                    steps.add(PipelineStep("store", "Store error: ${safeMessage(e)}", false, 0))
                     call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
             }
@@ -215,7 +217,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Parse error: ${e.message}"))
+                        ErrorResponse("Parse error: ${safeMessage(e)}"))
                 }
             }
 
@@ -231,7 +233,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     call.respond(codeGraph.index(root))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Graph index error: ${e.message}. Is Neo4j running? docker compose up -d"))
+                        ErrorResponse("Graph index error: ${safeMessage(e)}. Is Neo4j running? docker compose up -d"))
                 }
             }
         }
