@@ -41,8 +41,8 @@ fun buildSystemPrompt(sources: List<Source>): String {
     val unavailable = sources.filter { it.state != SourceState.ready }
 
     val readyList = if (ready.isEmpty()) "none" else ready.joinToString("") { s ->
-        val languages = s.languages.joinToString(", ").ifEmpty { "unknown language" }
-        "\n- ${s.name} ($languages, ${s.pieces} pieces)"
+        val details = s.languages + listOfNotNull(s.pieces.takeIf { it > 0 }?.let { "$it pieces" })
+        "\n- ${s.name}" + if (details.isEmpty()) "" else " (${details.joinToString(", ")})"
     }
     val unavailableList = if (unavailable.isEmpty()) "none" else unavailable.joinToString("") { "\n- ${unavailableLabel(it)}" }
 
@@ -54,7 +54,7 @@ Ready sources: $readyList
 Not available: $unavailableList
 
 Tools:
-- searchCodebase finds code by meaning across the ready sources. Start here for any question about the code.
+- searchCodebase finds code by meaning across the ready sources. For any question about the code or how the product behaves, call it before answering. Never describe what the code does without a piece you retrieved.
 - callersOf, calleesOf and declarationsIn follow connections in the code: who calls a function, what a function calls, what a file declares. Use them only to follow up on something a search already found.
 - Do not call tools for general programming questions. Do not repeat a search that already answered the question. You have at most $MAX_TOOL_CALLS tool calls.
 - If a tool says nothing relevant was found, say that nothing relevant was found. Do not guess.

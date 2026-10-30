@@ -9,6 +9,7 @@ import io.ntivo.GraphNode
 import io.ntivo.model.TraceHop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Graph queries over the ready sources ([sourceIds]): who calls a function, what it
@@ -36,7 +37,7 @@ class GraphTools(
         @LLMDescription("Simple function name without parentheses or class, e.g. 'friendLimit'")
         functionName: String
     ): String = trace.guarded("callersOf", functionName) {
-        traverse(functionName) { graph.callersOf(functionName, sourceIds) }
+        safely { traverse(functionName) { graph.callersOf(functionName, sourceIds) } }
     }
 
     @Tool
@@ -49,7 +50,7 @@ class GraphTools(
         @LLMDescription("Simple function name without parentheses or class, e.g. 'friendLimit'")
         functionName: String
     ): String = trace.guarded("calleesOf", functionName) {
-        traverse(functionName) { graph.calleesOf(functionName, sourceIds) }
+        safely { traverse(functionName) { graph.calleesOf(functionName, sourceIds) } }
     }
 
     @Tool
@@ -61,19 +62,30 @@ class GraphTools(
     suspend fun declarationsIn(
         @LLMDescription("End of a file path, e.g. 'InviteService.swift' or 'invite/InviteRepository.kt'")
         filePath: String
-    ): String = trace.guarded("declarationsIn", filePath) {
-        if (sourceIds.isEmpty()) return@guarded NO_SOURCES to "no ready sources"
-        if (!reachable) return@guarded GRAPH_DOWN to "graph unavailable"
+    ): String = trace.guarded("declarationsIn", filePath) { safely { declarations(filePath) } }
+
+    private suspend fun declarations(filePath: String): Pair<String, String> {
+        if (sourceIds.isEmpty()) return NO_SOURCES to "no ready sources"
+        if (!reachable) return GRAPH_DOWN to "graph unavailable"
         val nodes = withContext(Dispatchers.IO) { graph.declarationsIn(filePath, sourceIds) }
         if (nodes.isEmpty()) {
-            return@guarded "No declarations found in files ending with '$filePath'." to "0 declarations"
+            return "No declarations found in files ending with '$filePath'." to "0 declarations"
         }
         nodes.mapNotNull { it.pieceId }.forEach(trace::surfaced)
         val text = buildString {
             appendLine("${nodes.size} declaration${plural(nodes.size)} in files ending with '$filePath':")
             nodes.forEach { appendLine(nodeLine(it)) }
         }.trimEnd()
-        text to "${nodes.size} declaration${plural(nodes.size)}"
+        return text to "${nodes.size} declaration${plural(nodes.size)}"
+    }
+
+    /** A failing query becomes a plain message to the model, recorded as failed in the trace. */
+    private inline fun safely(block: () -> Pair<String, String>): Pair<String, String> = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        GRAPH_DOWN to "failed: ${e.message}"
     }
 
     private suspend fun traverse(functionName: String, query: () -> List<GraphEdge>): Pair<String, String> {

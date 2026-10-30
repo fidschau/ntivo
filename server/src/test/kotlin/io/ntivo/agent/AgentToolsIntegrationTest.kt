@@ -122,6 +122,23 @@ class AgentToolsIntegrationTest {
     }
 
     @Test
+    fun `a failing embedder becomes a plain message and a failed tool call`() = runBlocking {
+        assumeQdrant()
+        store.ensureCollection(collection, dimensions = 4)
+        val failing = object : TaskTypeEmbedder {
+            override suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector = error("quota exceeded")
+            override suspend fun embed(text: String): Vector = error("quota exceeded")
+            override fun diff(embedding1: Vector, embedding2: Vector) = 0.0
+        }
+        val trace = TraceRecorder()
+
+        val text = CodeSearchTools(failing, store, collection, listOf(s1), trace).searchCodebase("x")
+
+        assertTrue(text.startsWith("Search is unavailable"), text)
+        assertEquals("failed: quota exceeded", trace.toTrace("a", "", emptyList(), "m").toolCalls.single().summary)
+    }
+
+    @Test
     fun `search with no ready sources does not embed`() = runBlocking {
         val embedder = FixedEmbedder(listOf(1.0, 0.0, 0.0, 0.0))
         val text = CodeSearchTools(embedder, store, collection, emptyList(), TraceRecorder()).searchCodebase("x")

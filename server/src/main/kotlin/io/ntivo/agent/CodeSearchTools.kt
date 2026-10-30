@@ -7,6 +7,7 @@ import io.ntivo.EmbeddingTaskType
 import io.ntivo.TaskTypeEmbedder
 import io.ntivo.VectorStore
 import io.ntivo.pieceFromPayload
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Guardrail: search results scoring below this are dropped before the model sees them. */
 const val MIN_SIMILARITY = 0.60f
@@ -41,7 +42,16 @@ class CodeSearchTools(
     suspend fun searchCodebase(
         @LLMDescription("What the code does, in plain words, e.g. 'maximum number of friends a member can invite'")
         query: String
-    ): String = trace.guarded("searchCodebase", query) { search(query) }
+    ): String = trace.guarded("searchCodebase", query) {
+        try {
+            search(query)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // e.g. the embedding quota is spent or Qdrant is down: tell the model plainly
+            "Search is unavailable right now. Say that the code could not be searched." to "failed: ${e.message}"
+        }
+    }
 
     private suspend fun search(query: String): Pair<String, String> {
         if (sourceIds.isEmpty()) {
