@@ -85,7 +85,7 @@ class GraphTools(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        GRAPH_DOWN to "failed: ${e.message}"
+        GRAPH_DOWN to "failed: ${safeMessage(e)}"
     }
 
     private suspend fun traverse(functionName: String, query: () -> List<GraphEdge>): Pair<String, String> {

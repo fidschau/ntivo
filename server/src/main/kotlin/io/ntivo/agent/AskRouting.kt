@@ -49,8 +49,8 @@ fun Application.configureAskRouting(
                 val answer = try {
                     answerer.ask(request.question.trim(), request.sourceIds)
                 } catch (e: Exception) {
-                    log.warn("Answering failed", e)
-                    return@post call.respond(HttpStatusCode.BadGateway, ErrorResponse("Could not answer: ${e.message}"))
+                    log.warn("Answering failed: {}", safeMessage(e))
+                    return@post call.respond(HttpStatusCode.BadGateway, ErrorResponse("Could not answer: ${safeMessage(e)}"))
                 }
                 call.respond(answer)
             }

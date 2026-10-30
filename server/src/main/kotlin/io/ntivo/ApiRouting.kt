@@ -7,6 +7,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ntivo.agent.AnswerService
 import io.ntivo.agent.AnswerStore
+import io.ntivo.agent.safeMessage
 import io.ntivo.shared.*
 import java.io.File
 
@@ -47,7 +48,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.BadGateway,
-                        ErrorResponse("Agent error: ${e.message}"))
+                        ErrorResponse("Agent error: ${safeMessage(e)}"))
                 }
             }
 
@@ -83,7 +84,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Search error: ${e.message}. Is Qdrant running? docker compose up -d"))
+                        ErrorResponse("Search error: ${safeMessage(e)}. Is Qdrant running? docker compose up -d"))
                 }
             }
 
@@ -116,7 +117,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                         durationMs = System.currentTimeMillis() - parseStart
                     ))
                 } catch (e: Exception) {
-                    steps.add(PipelineStep("parse", "Parse failed: ${e.message}", false,
+                    steps.add(PipelineStep("parse", "Parse failed: ${safeMessage(e)}", false,
                         System.currentTimeMillis() - parseStart))
                     return@post call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
@@ -179,7 +180,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                         chunksSkipped = skipped
                     ))
                 } catch (e: Exception) {
-                    steps.add(PipelineStep("store", "Store error: ${e.message}", false, 0))
+                    steps.add(PipelineStep("store", "Store error: ${safeMessage(e)}", false, 0))
                     call.respond(RagPipelineResponse(steps, 0, elapsed()))
                 }
             }
@@ -216,7 +217,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     ))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Parse error: ${e.message}"))
+                        ErrorResponse("Parse error: ${safeMessage(e)}"))
                 }
             }
 
@@ -232,7 +233,7 @@ fun Application.configureApiRouting(ctx: AppContext) {
                     call.respond(codeGraph.index(root))
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError,
-                        ErrorResponse("Graph index error: ${e.message}. Is Neo4j running? docker compose up -d"))
+                        ErrorResponse("Graph index error: ${safeMessage(e)}. Is Neo4j running? docker compose up -d"))
                 }
             }
         }

@@ -74,7 +74,7 @@ class TraceRecorder(
         val (result, summary) = try {
             block()
         } catch (e: Throwable) {
-            addToolCall(ToolCall(tool, args, "failed: ${e.message}", System.currentTimeMillis() - start))
+            addToolCall(ToolCall(tool, args, "failed: ${safeMessage(e)}", System.currentTimeMillis() - start))
             throw e
         }
         addToolCall(ToolCall(tool, args, summary, System.currentTimeMillis() - start))

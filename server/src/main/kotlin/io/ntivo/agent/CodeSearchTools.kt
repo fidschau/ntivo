@@ -49,7 +49,7 @@ class CodeSearchTools(
             throw e
         } catch (e: Exception) {
             // e.g. the embedding quota is spent or Qdrant is down: tell the model plainly
-            "Search is unavailable right now. Say that the code could not be searched." to "failed: ${e.message}"
+            "Search is unavailable right now. Say that the code could not be searched." to "failed: ${safeMessage(e)}"
         }
     }
 
