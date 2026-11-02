@@ -107,7 +107,7 @@ class AskRoutingTest {
             setBody("""{"question": "Why?"}""")
         }
         assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
-        assertTrue(response.bodyAsText().contains("NTIVO_GEMINI_API_KEY"))
+        assertTrue(response.bodyAsText().contains("NTIVO_ANTHROPIC_API_KEY"))
     }
 
     @Test

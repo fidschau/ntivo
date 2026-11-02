@@ -40,8 +40,16 @@ class CodebaseAgentTest {
     }
 
     @Test
-    fun `the model and temperature are pinned`() {
-        assertEquals("gemini-2.5-flash", ANSWER_MODEL.id)
+    fun `the models and temperature are pinned`() {
+        assertEquals("claude-sonnet-5-5", CLAUDE_ANSWER_MODEL.id)
+        assertEquals("gemini-2.5-flash", GEMINI_ANSWER_MODEL.id)
         assertEquals(0.2, ANSWER_TEMPERATURE)
+    }
+
+    @Test
+    fun `Claude gets the default temperature because it rejects any other`() {
+        assertEquals(1.0, temperatureFor(CLAUDE_ANSWER_MODEL))
+        assertEquals(1.0, temperatureFor(CLAUDE_ANSWER_MODEL, preferred = 0.0))
+        assertEquals(0.2, temperatureFor(GEMINI_ANSWER_MODEL))
     }
 }

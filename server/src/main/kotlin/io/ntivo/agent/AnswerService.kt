@@ -46,14 +46,15 @@ class KoogAgentRunner(private val ctx: AppContext) : AgentRunner {
             executor = executor,
             systemPrompt = systemPrompt,
             searchTools = CodeSearchTools(embedder, ctx.vectorStore, ctx.collection, readySourceIds, trace),
-            graphTools = GraphTools(ctx.codeGraph, readySourceIds, trace)
+            graphTools = GraphTools(ctx.codeGraph, readySourceIds, trace),
+            model = ctx.answerModel
         )
         return agent.run(question)
     }
 
     override suspend fun repair(rawOutput: String): String {
         val executor = checkNotNull(ctx.executor) { "No model key configured" }
-        return createRepairAgent(executor).run("Return only the JSON object.\n\n$rawOutput")
+        return createRepairAgent(executor, ctx.answerModel).run("Return only the JSON object.\n\n$rawOutput")
     }
 }
 
@@ -97,7 +98,7 @@ class AnswerService(
 
         val assembled = assembleAnswer(answerId, question, output, trace, unavailable, 0, pieceLookup)
         val answer = assembled.copy(durationMs = System.currentTimeMillis() - start)
-        val raw = trace.toTrace(answerId, "", unavailable, ANSWER_MODEL.id)
+        val raw = trace.toTrace(answerId, "", unavailable, ctx.answerModel.id)
         store.save(AnswerRecord(answer, raw.copy(explanation = explanation(raw))))
         return answer
     }

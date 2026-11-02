@@ -9,7 +9,10 @@ import io.ntivo.VectorStore
 import io.ntivo.pieceFromPayload
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Guardrail: search results scoring below this are dropped before the model sees them. */
+/**
+ * Guardrail: search results scoring below this are dropped before the model sees them.
+ * Calibrated for Gemini; each embedder can set its own ([io.ntivo.TaskTypeEmbedder.minSimilarity]).
+ */
 const val MIN_SIMILARITY = 0.60f
 
 /** How many pieces one search returns at most. */
@@ -28,7 +31,7 @@ class CodeSearchTools(
     private val collection: String,
     private val sourceIds: List<String>,
     private val trace: TraceRecorder,
-    private val minScore: Float = MIN_SIMILARITY,
+    private val minScore: Float = embedder.minSimilarity,
     private val limit: Int = SEARCH_LIMIT
 ) : ToolSet {
 

@@ -203,7 +203,7 @@ fun SearchScreen(modifier: Modifier = Modifier) {
                             "Search failed.\n\nError: ${e.message}\n\n" +
                                 "Make sure:\n" +
                                 "  1. Server is running: ./gradlew :server:run\n" +
-                                "  2. NTIVO_GEMINI_API_KEY is set\n" +
+                                "  2. Ollama is running: brew services start ollama\n" +
                                 "  3. Qdrant is running: docker compose up -d"
                         )
                     }

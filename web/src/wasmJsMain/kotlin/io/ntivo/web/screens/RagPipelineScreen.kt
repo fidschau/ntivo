@@ -119,7 +119,7 @@ fun RagPipelineScreen(modifier: Modifier = Modifier) {
                         pipelineState = ResultState.Error(
                             "Pipeline failed.\n\nError: ${e.message}\n\n" +
                                 "Make sure:\n" +
-                                "  1. NTIVO_GEMINI_API_KEY is set\n" +
+                                "  1. Ollama is running: brew services start ollama\n" +
                                 "  2. Docker is running: docker compose up -d"
                         )
                     }

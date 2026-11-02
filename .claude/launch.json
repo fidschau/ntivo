@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "ntivo-server",
-      "runtimeExecutable": "./gradlew",
-      "runtimeArgs": [":server:run"],
+      "runtimeExecutable": "zsh",
+      "runtimeArgs": ["-ic", "exec ./gradlew :server:run"],
       "port": 8080
     },
     {

@@ -11,12 +11,13 @@ import io.ntivo.agent.safeMessage
 import io.ntivo.shared.*
 import java.io.File
 
-private const val MISSING_KEY = "NTIVO_GEMINI_API_KEY not set. Export it and restart the server."
+private const val MISSING_KEY =
+    "No answer model key is set. Export NTIVO_ANTHROPIC_API_KEY (or NTIVO_GEMINI_API_KEY) and restart the server."
 
 // --- API routing ---
 
 fun Application.configureApiRouting(ctx: AppContext) {
-    // Shared, long-lived clients from the app context. Gemini-backed ones are null if the API key is missing.
+    // Shared, long-lived clients from the app context. The executor is null without a model key.
     val executor = ctx.executor
     val embedder = ctx.embedder
     val vectorStore = ctx.vectorStore
@@ -137,8 +138,13 @@ fun Application.configureApiRouting(ctx: AppContext) {
 
                 // Step 3 & 4: Embed + Store, skipping functions whose body hasn't changed
                 try {
-                    vectorStore.ensureCollection(request.collection)
-                    val existing = vectorStore.fingerprints(request.collection, functions.map { it.pointId() })
+                    // Created on the first vector, so its size matches whichever embedder is configured
+                    var collectionReady = vectorStore.collectionExists(request.collection)
+                    val existing = if (collectionReady) {
+                        vectorStore.fingerprints(request.collection, functions.map { it.pointId() })
+                    } else {
+                        emptyMap()
+                    }
 
                     var stored = 0
                     var skipped = 0
@@ -162,6 +168,10 @@ fun Application.configureApiRouting(ctx: AppContext) {
                             durationMs = embedMs
                         ))
 
+                        if (!collectionReady) {
+                            vectorStore.ensureCollection(request.collection, dimensions = vector.dimension.toLong())
+                            collectionReady = true
+                        }
                         vectorStore.upsert(request.collection, fn.pointId(), vector.values, fn.payload())
                         stored++
                     }

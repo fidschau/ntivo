@@ -3,4 +3,6 @@ ktor:
     modules:
       - io.ntivo.ApplicationKt.module
   deployment:
+    # Local only: there is no auth, so other machines on the network must not reach it
+    host: 127.0.0.1
     port: 8080

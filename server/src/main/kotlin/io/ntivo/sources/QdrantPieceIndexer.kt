@@ -3,7 +3,6 @@ package io.ntivo.sources
 import io.ntivo.EmbeddingRateLimited
 import io.ntivo.EmbeddingRequestFailed
 import io.ntivo.EmbeddingTaskType
-import io.ntivo.GeminiEmbedder
 import io.ntivo.TaskTypeEmbedder
 import io.ntivo.VectorStore
 import io.ntivo.model.Piece
@@ -42,7 +41,7 @@ class QdrantPieceIndexer(
     private val store: VectorStore,
     private val embedder: TaskTypeEmbedder,
     private val collection: String,
-    private val batchSize: Int = GeminiEmbedder.MAX_BATCH,
+    private val batchSize: Int = embedder.maxBatch,
     private val maxAttempts: Int = 8,
     private val baseDelayMs: Long = 2_000,
     private val maxRetryDelayMs: Long = 60_000,
@@ -91,7 +90,8 @@ class QdrantPieceIndexer(
     /**
      * Embeds [texts] in one call, retrying as described on the class. [onWait] runs before
      * every backoff wait. With the defaults the waits add up to about four minutes, long
-     * enough to outlast a per-minute quota (the Gemini free tier allows 100 a minute).
+     * enough to outlast a per-minute quota (the Gemini free tier allows 100 a minute) or
+     * a local model server that is still starting.
      */
     private suspend fun embedWithRetry(sourceId: String, texts: List<String>, onWait: () -> Unit): List<List<Double>> {
         var attempt = 0

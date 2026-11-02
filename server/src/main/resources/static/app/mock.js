@@ -271,7 +271,7 @@ export async function ask(question) {
         { tool: 'calleesOf', args: '{"functionName":"friendLimit"}', summary: '1 connection', durationMs: 110 },
       ],
       limitsHit: [],
-      model: 'gemini-2.5-flash',
+      model: 'claude-sonnet-5-5',
     };
   } else {
     answer = {
@@ -285,7 +285,7 @@ export async function ask(question) {
       pieces: [], hops: [], unavailable: notSeen,
       toolCalls: [{ tool: 'searchCodebase', args: JSON.stringify({ query: question }), summary: 'No pieces above 0.60', durationMs: 790 }],
       limitsHit: [],
-      model: 'gemini-2.5-flash',
+      model: 'claude-sonnet-5-5',
     };
   }
   answers.set(id, answer);

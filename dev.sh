@@ -18,10 +18,16 @@ for arg in "$@"; do
   esac
 done
 
-# ── Check for API key ──
-if [ -z "${NTIVO_GEMINI_API_KEY:-}" ]; then
-  echo "NTIVO_GEMINI_API_KEY not set — indexing and answers will be disabled."
-  echo "   Set it with: export NTIVO_GEMINI_API_KEY=\"your-key\""
+# ── Check the models ──
+if [ "${NTIVO_EMBEDDER:-ollama}" = "ollama" ]; then
+  if ! curl -s -o /dev/null "${NTIVO_OLLAMA_URL:-http://localhost:11434}/api/version"; then
+    echo "Ollama is not running, so indexing will fail. Start it with: brew services start ollama"
+    echo ""
+  fi
+fi
+if [ -z "${NTIVO_ANTHROPIC_API_KEY:-}" ] && [ -z "${NTIVO_GEMINI_API_KEY:-}" ]; then
+  echo "No answer model key set, so questions are disabled."
+  echo "   Set it with: export NTIVO_ANTHROPIC_API_KEY=\"your-key\""
   echo ""
 fi
 

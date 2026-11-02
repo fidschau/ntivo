@@ -14,7 +14,8 @@ import org.slf4j.LoggerFactory
 @Serializable
 data class AskRequest(val question: String, val sourceIds: List<String>? = null)
 
-private const val MISSING_KEY = "NTIVO_GEMINI_API_KEY not set. Export it and restart the server."
+private const val MISSING_KEY =
+    "No answer model key is set. Export NTIVO_ANTHROPIC_API_KEY (or NTIVO_GEMINI_API_KEY) and restart the server."
 
 private val log = LoggerFactory.getLogger("io.ntivo.agent.AskRouting")
 

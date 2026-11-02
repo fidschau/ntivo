@@ -287,12 +287,13 @@ fun toPieces(sourceId: String, sourceName: String, file: ParsedSourceFile): List
         )
     }
 
-/** Error shown in the embed stage when the server has no embedding model key. */
-const val MISSING_EMBEDDER = "NTIVO_GEMINI_API_KEY is not set. Export it and restart the server."
+/** Error shown in the embed stage when the server has no embedder. */
+const val MISSING_EMBEDDER =
+    "No embedder is configured. Use NTIVO_EMBEDDER=ollama (the default), or export NTIVO_GEMINI_API_KEY with NTIVO_EMBEDDER=gemini, and restart the server."
 
 /**
  * The index job the server runs, called once from `Application.module()`: pieces go to
- * the shared Qdrant collection, the graph to Neo4j. Without a model key, jobs fail in
+ * the shared Qdrant collection, the graph to Neo4j. Without an embedder, jobs fail in
  * the embed stage with [MISSING_EMBEDDER].
  */
 fun createIndexJob(ctx: AppContext): IndexJob = IndexJob(

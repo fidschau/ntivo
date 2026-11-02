@@ -18,6 +18,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import io.ntivo.agent.MIN_SIMILARITY
 import io.ntivo.agent.redactSecrets
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
@@ -53,6 +54,16 @@ enum class EmbeddingTaskType {
  * not on [GeminiEmbedder], so another model (e.g. Ollama) can be swapped in.
  */
 interface TaskTypeEmbedder : Embedder {
+    /** The most texts worth sending in one [embedAll] call; indexing batches by this. */
+    val maxBatch: Int get() = 100
+
+    /**
+     * Search results scoring below this never reach the model. Each model spreads its
+     * cosine scores differently, so the cut-off is calibrated per model; the default
+     * ([MIN_SIMILARITY]) was set for Gemini.
+     */
+    val minSimilarity: Float get() = MIN_SIMILARITY
+
     suspend fun embed(text: String, taskType: EmbeddingTaskType): Vector
 
     /**
@@ -144,9 +155,11 @@ class GeminiEmbedder(
     private val model: String = "gemini-embedding-001",
     private val defaultTaskType: EmbeddingTaskType = EmbeddingTaskType.RETRIEVAL_DOCUMENT,
     engine: HttpClientEngine? = null
-) : TaskTypeEmbedder {
+) : TaskTypeEmbedder, AutoCloseable {
 
     private val httpClient = if (engine != null) HttpClient(engine) { configure() } else HttpClient(CIO) { configure() }
+
+    override val maxBatch: Int get() = MAX_BATCH
 
     private fun HttpClientConfig<*>.configure() {
         install(ContentNegotiation) { json(geminiJson) }
@@ -193,7 +206,7 @@ class GeminiEmbedder(
         return 1.0 - embedding1.cosineSimilarity(embedding2)
     }
 
-    fun close() {
+    override fun close() {
         httpClient.close()
     }
 
